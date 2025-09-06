@@ -1,7 +1,22 @@
-import { caller } from "@/trpc/server";
+"use client";
 
-export default async function Page() {
-  const data = await caller.hello({ text: "Antonio server" });
-  console.log(data.greeting);
-  return <div className="font-bold">Hello World</div>;
+import { Button } from "@/components/ui/button";
+import { useTRPC } from "@/trpc/client";
+import { useMutation } from "@tanstack/react-query";
+
+export default function Page() {
+  const trpc = useTRPC();
+
+  const invoke = useMutation(trpc.invoke.mutationOptions());
+
+  return (
+    <div className="p-4 max-w-7xl max-auto">
+      <Button
+        variant={"default"}
+        onClick={() => invoke.mutate({ text: "bharatpanigrahi225@gmail.com" })}
+      >
+        Invoke background job
+      </Button>
+    </div>
+  );
 }
