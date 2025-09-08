@@ -6,7 +6,7 @@ export async function getSandbox(sandboxId: string) {
   return sandbox;
 }
 
-export function lastAssistantResponse(result: AgentResult) {
+export function lastAssistantTextMessageContent(result: AgentResult) {
   const lastAssistantTextMessageIndex = result.output.findLastIndex(
     (message) => message.role === "assistant"
   );
@@ -15,11 +15,13 @@ export function lastAssistantResponse(result: AgentResult) {
     | TextMessage
     | undefined;
 
-  const content = message?.content
-    ? typeof message.content === "string"
-      ? message.content
-      : message.content.map((part) => part.text).join("")
-    : undefined;
+  let messaageContent: string | undefined;
 
-  return content;
+  if(!message || message?.content === undefined) {
+    return undefined;
+  } else {
+    messaageContent = typeof message.content === "string" ? message.content : message.content.map((part) => part.text).join("");
+  }
+
+  return messaageContent;
 }
