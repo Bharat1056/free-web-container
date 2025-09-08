@@ -1,7 +1,12 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { gemini, createAgent, createTool } from "@inngest/agent-kit";
+import {
+  createAgent,
+  createTool,
+  createNetwork,
+  openai,
+} from "@inngest/agent-kit";
 import { inngest } from "./client";
-import { getSandbox } from "@/inngest/utils";
+import { getSandbox, lastAssistantTextMessageContent } from "@/inngest/utils";
 import { z } from "zod";
 import { PROMPT } from "@/prompt";
 
@@ -14,13 +19,13 @@ export const helloWorld = inngest.createFunction(
       return sandbox.sandboxId;
     });
     // create an agent
-    const writer = createAgent({
+    const codeAgent = createAgent({
       name: "code-agent",
       description:
         "An Exeprt coding agent that writes code in next.js, tailwind CSS, shadcn",
       system: PROMPT,
-      model: gemini({
-        model: "gemini-1.5-flash",
+      model: openai({
+        model: "gpt-4.1",
         defaultParameters: {},
       }),
       tools: [
@@ -30,7 +35,7 @@ export const helloWorld = inngest.createFunction(
           description: "Use the terminal to run commands",
           parameters: z.object({
             command: z.string(),
-          }),
+          }) as any,
           handler: async ({ command }, { step }) => {
             return await step?.run("terminal", async () => {
               const buffer = { stdout: "", stderr: "" };
@@ -66,7 +71,7 @@ export const helloWorld = inngest.createFunction(
                 content: z.string(),
               })
             ),
-          }),
+          }) as any,
           handler: async ({ files }, { step, network }) => {
             const newFiles = await step?.run(
               "createOrUpdateFiles",
@@ -89,13 +94,13 @@ export const helloWorld = inngest.createFunction(
             }
           },
         }),
-        // readFile tool
+        // readFiles tool
         createTool({
-          name: "readFile",
-          description: "Read a file from the sandbox",
+          name: "readFiles",
+          description: "Read files from the sandbox",
           parameters: z.object({
             files: z.array(z.string()),
-          }),
+          }) as any,
           handler: async ({ files }, { step }) => {
             return await step?.run("readFiles", async () => {
               try {
@@ -114,14 +119,33 @@ export const helloWorld = inngest.createFunction(
         }),
       ],
       lifecycle: {
-        onResponse: 
-      }
+        onResponse: async ({ result, network }) => {
+          const lastAssistantMessageText =
+            lastAssistantTextMessageContent(result);
+          if (lastAssistantMessageText && network) {
+            if (lastAssistantMessageText.includes("<task_summary>")) {
+              network.state.data.summary = lastAssistantMessageText;
+            }
+          }
+          return result;
+        },
+      },
     });
-    const { output } = await writer.run(
-      `Write the following snippet of code in next.js and React: ${event.data.value}`
-    );
 
-    console.log(output);
+    const network = createNetwork({
+      name: "code-agent-network",
+      agents: [codeAgent],
+      maxIter: 15,
+      router: async ({ network }) => {
+        const summary = network.state.data.summary;
+        if (summary) {
+          return;
+        }
+        return codeAgent;
+      },
+    });
+
+    const result = await network.run(event.data.value);
 
     const sandboxUrl = await step.run("get-sandbox-url", async () => {
       const sandbox = await getSandbox(sandboxId);
@@ -129,6 +153,11 @@ export const helloWorld = inngest.createFunction(
       return `https://${host}`;
     });
 
-    return { output, sandboxUrl };
+    return {
+      url: sandboxUrl,
+      title: "Fragment",
+      files: result.state.data.files,
+      summary: result.state.data.summary,
+    };
   }
 );
