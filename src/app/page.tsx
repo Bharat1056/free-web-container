@@ -3,42 +3,43 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTRPC } from "@/trpc/client";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 export default function Page() {
+  const router = useRouter();
   const [value, setValue] = useState("");
 
   const trpc = useTRPC();
 
-  const { data: messages } = useQuery(trpc.messages.getMany.queryOptions());
-
-  const createMessage = useMutation({
-    ...trpc.messages.create.mutationOptions(),
-    onSuccess: () => {
-      toast.success("Message Created");
+  const createProject = useMutation({
+    ...trpc.projects.create.mutationOptions(),
+    onSuccess: (data) => {
+      router.push(`/projects/${data.id}`);
     },
     onError: () => {
-      toast.error("Failed in message creation");
+      toast.error("Failed in Project creation");
     },
   });
 
   return (
-    <div className="p-4 max-w-7xl max-auto">
-      <Input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="mb-4"
-      />
-      <Button
-        disabled={createMessage.isPending}
-        variant={"default"}
-        onClick={() => createMessage.mutate({ value })}
-      >
-        {createMessage.isPending ? "Invoking..." : "Invoke background job"}
-      </Button>
-      {JSON.stringify(messages)}
+    <div className="h-screen w-screen flex justify-center items-center">
+      <div className="max-w-7xl mx-auto flex flex-col items-center gap-y-4 justify-center">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="mb-4"
+        />
+        <Button
+          disabled={createProject.isPending}
+          variant={"default"}
+          onClick={() => createProject.mutate({ value })}
+        >
+          {createProject.isPending ? "Invoking..." : "Invoke background job"}
+        </Button>
+      </div>
     </div>
   );
 }
