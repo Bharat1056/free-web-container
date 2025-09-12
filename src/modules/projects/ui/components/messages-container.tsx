@@ -1,0 +1,58 @@
+import { MessageCard } from "@/modules/projects/ui/components/message-card";
+import { MessageForm } from "@/modules/projects/ui/components/message-form";
+import { useTRPC } from "@/trpc/client";
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+
+interface Props {
+  projectId: string;
+}
+
+export const MessagesContainer = ({ projectId }: Props) => {
+  const trpc = useTRPC();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const { data: messages } = useSuspenseQuery(
+    trpc.messages.getMany.queryOptions({
+      projectId,
+    })
+  );
+
+  useEffect(() => {
+    const lastAssistantMessage = messages
+      .filter((message) => message.role === "ASSISTANT")
+      .at(-1);
+    if (lastAssistantMessage) {
+      // TODO: SET ACTIVE FRAGMENT
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [bottomRef]);
+
+  return (
+    <div className="flex flex-col flex-1 min-h-4">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="pt-2 pr-1">
+          {messages.map((message) => (
+            <MessageCard
+              key={message.id}
+              content={message.content}
+              role={message.role}
+              fragment={message.fragment}
+              createdAt={message.createdAt}
+              isActiveFragment={false}
+              type={message.type}
+              onFragmentClick={() => {}}
+            />
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+      <div className="relative p-3 pt-1">
+        <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-b from transparent to-background/70 pointer-events-none" />
+        <MessageForm projectId={projectId} />
+      </div>
+    </div>
+  );
+};
