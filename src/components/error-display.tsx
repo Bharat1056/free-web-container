@@ -242,9 +242,7 @@ export function ErrorDisplay({
  * Hook for displaying errors in a consistent way
  */
 export function useErrorDisplay() {
-  const router = useRouter();
-
-  const showError = (error: unknown, options?: Partial<ErrorDisplayProps>) => {
+  const showError = (error: unknown) => {
     // This could be used with a toast notification system
     // For now, we'll just log the error
     console.error("Error displayed:", error);

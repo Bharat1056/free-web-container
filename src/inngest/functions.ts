@@ -8,7 +8,6 @@ import {
   type Tool,
   createState,
   Message,
-  TextMessage,
 } from "@inngest/agent-kit";
 import { inngest } from "./client";
 import {
@@ -128,8 +127,8 @@ const codeAgent = createAgent<AgentState>({
     createTool({
       name: "terminal",
       description: "Use the terminal to run commands",
-      parameters: z.object({ command: z.string() }) as any,
-      handler: async ({ command }, { network }) => {
+      parameters: z.object({ command: z.string() }) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      handler: async ({ command }, { network }: Tool.Options<AgentState>) => {
         const buffer = { stdout: "", stderr: "" };
         try {
           const sandbox = await getSandbox(network.state.data.sandboxId!);
@@ -162,7 +161,7 @@ const codeAgent = createAgent<AgentState>({
             content: z.string(),
           })
         ),
-      }) as any,
+      }) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
       handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
         try {
           if (network) {
@@ -187,7 +186,7 @@ const codeAgent = createAgent<AgentState>({
       description: "Read files from the sandbox",
       parameters: z.object({
         files: z.array(z.string()),
-      }) as any,
+      }) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
       handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
         if (network) {
           const sandbox = await getSandbox(network.state.data.sandboxId!);
