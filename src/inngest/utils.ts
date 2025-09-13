@@ -1,5 +1,5 @@
 import { Sandbox } from "@e2b/code-interpreter";
-import { AgentResult, TextMessage } from "@inngest/agent-kit";
+import { AgentResult, Message, TextMessage } from "@inngest/agent-kit";
 
 export async function getSandbox(sandboxId: string) {
   const sandbox = await Sandbox.connect(sandboxId);
@@ -17,11 +17,27 @@ export function lastAssistantTextMessageContent(result: AgentResult) {
 
   let messaageContent: string | undefined;
 
-  if(!message || message?.content === undefined) {
+  if (!message || message?.content === undefined) {
     return undefined;
   } else {
-    messaageContent = typeof message.content === "string" ? message.content : message.content.map((part) => part.text).join("");
+    messaageContent =
+      typeof message.content === "string"
+        ? message.content
+        : message.content.map((part) => part.text).join("");
   }
 
   return messaageContent;
 }
+
+export const parseAgentOutput = (value: Message[]): string => {
+  const output = value[0];
+  if (output.type !== "text") {
+    return "Fragment";
+  }
+
+  if (Array.isArray(output.content)) {
+    return output.content.map((part) => part.text).join("");
+  }
+
+  return output.content;
+};
