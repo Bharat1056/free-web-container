@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 import { useRouter } from "next/navigation";
 import { PROJECT_TEMPLATES } from "@/modules/home/constants";
+import { useClerk, useUser } from "@clerk/nextjs";
 
 const formSchema = z.object({
   value: z
@@ -23,7 +24,9 @@ const formSchema = z.object({
 
 export const ProjectForm = () => {
   const router = useRouter();
+  const clerk = useClerk();
   const trpc = useTRPC();
+  const { user } = useUser();
   const queryClient = useQueryClient();
 
   const createProject = useMutation({
@@ -34,12 +37,15 @@ export const ProjectForm = () => {
       router.push(`/projects/${data.id}`);
     },
     onError: (error) => {
-      // TODO: redirect to pricing page
       toast.error(error.message);
     },
   });
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (!user) {
+      clerk.openSignIn();
+      return;
+    }
     await createProject.mutateAsync({
       value: values.value,
     });
