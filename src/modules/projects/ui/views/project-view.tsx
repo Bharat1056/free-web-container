@@ -20,6 +20,7 @@ import { CodeView } from "@/components/code-view";
 import { FileExplorer } from "@/components/file-explorer";
 import { UserControl } from "@/components/user-control";
 import { useAuth } from "@clerk/nextjs";
+import { CardLoading, MessageLoading } from "@/components/ui/loading";
 
 interface Props {
   projectId: string;
@@ -45,10 +46,19 @@ export const ProjectView = ({ projectId }: Props) => {
           minSize={20}
           className="flex flex-col min-h-0"
         >
-          <Suspense fallback={<>Loading Project Header...</>}>
+          <Suspense
+            fallback={
+              <CardLoading
+                showAvatar={true}
+                showTitle={true}
+                showDescription={false}
+                lines={1}
+              />
+            }
+          >
             <ProjectHeader projectId={projectId} />
           </Suspense>
-          <Suspense fallback={<>Loading Messages...</>}>
+          <Suspense fallback={<MessageLoading showAvatar={true} lines={3} />}>
             <MessagesContainer
               projectId={projectId}
               activeFragment={activeFragment}
