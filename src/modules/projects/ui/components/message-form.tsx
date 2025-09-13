@@ -34,7 +34,7 @@ export const MessageForm = ({ projectId }: Props) => {
 
   const createMessage = useMutation({
     ...trpc.messages.create.mutationOptions(),
-    onSuccess: (data) => {
+    onSuccess: () => {
       form.reset();
       queryClient.invalidateQueries(
         trpc.messages.getMany.queryOptions({ projectId })
@@ -67,24 +67,21 @@ export const MessageForm = ({ projectId }: Props) => {
   });
 
   const [isFocused, setIsFocused] = useState(false);
-  const [showUsage, setShowUsage] = useState(true);
   const isPending = createMessage.isPending;
   const isButtonDisabled = isPending || !form.formState.isValid;
 
   return (
     <Form {...form}>
-      {showUsage && (
-        <Usage
-          points={usage?.remainingPoints ?? 0}
-          msBeforeNext={usage?.msBeforeNext ?? 0}
-        />
-      )}
+      <Usage
+        points={usage?.remainingPoints ?? 0}
+        msBeforeNext={usage?.msBeforeNext ?? 0}
+      />
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn(
           "relative border p-4 pt-1 rounded-xl bg-sidebar dark:bg-sidebar transition-all",
           isFocused && "shadow-xs",
-          showUsage && "rounded-t-none"
+          "rounded-t-none"
         )}
       >
         <FormField

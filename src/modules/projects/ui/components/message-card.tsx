@@ -1,4 +1,4 @@
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Fragment, MessageRole, MessageType } from "@prisma/client";
 import { format } from "date-fns";
@@ -20,9 +20,9 @@ const UserMessage = ({ content }: UserMessageProps) => {
 };
 
 interface FragmentCardProps {
-  fragment: Fragment;
+  fragment: Fragment | null;
   isActiveFragment: boolean;
-  onFragmentClick: (fragment: Fragment) => void;
+  onFragmentClick: (fragment: Fragment | null) => void;
 }
 
 const FragmentCard = ({
@@ -42,7 +42,7 @@ const FragmentCard = ({
       <Code2Icon className="size-4 mt-0.5" />
       <div className="flex flex-col flex-1">
         <span className="text-sm font-medium line-clamp-1">
-          {fragment.title}
+          {fragment?.title}
         </span>
         <span className="text-sm">Preview</span>
       </div>
@@ -57,9 +57,9 @@ interface AssistantMessageProps {
   content: string;
   fragment: Fragment | null;
   createdAt: Date;
-  isActiveFragment: Boolean;
+  isActiveFragment: boolean;
   type: MessageType;
-  onFragmentClick: (fragment: Fragment) => void;
+  onFragmentClick: (fragment: Fragment | null) => void;
 }
 
 const AssistantMessage = ({
@@ -107,9 +107,9 @@ interface Props {
   role: MessageRole;
   fragment: Fragment | null;
   createdAt: Date;
-  isActiveFragment: Boolean;
+  isActiveFragment: boolean;
   type: MessageType;
-  onFragmentClick: (fragment: Fragment) => void;
+  onFragmentClick: (fragment: Fragment | null) => void;
 }
 
 export const MessageCard = ({

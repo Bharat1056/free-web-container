@@ -1,4 +1,4 @@
-import { CheckIcon, CopyCheckIcon, CopyIcon } from "lucide-react";
+import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState, useMemo, useCallback, Fragment } from "react";
 
 import { Hint } from "@/components/hint";
@@ -17,7 +17,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
   BreadcrumbEllipsis,
-  BreadcrumbLink,
 } from "@/components/ui/breadcrumb";
 import { convertFilesToTreeItems } from "@/lib/utils";
 import { TreeView } from "@/components/tree-view";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ExternalLink, ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
+import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
 
 import { Fragment } from "@prisma/client";
 import { Button } from "@/components/ui/button";

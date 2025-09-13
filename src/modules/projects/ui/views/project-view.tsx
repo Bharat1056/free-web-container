@@ -1,7 +1,5 @@
 "use client";
 
-import { useTRPC } from "@/trpc/client";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -16,7 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodeIcon, CrownIcon, EyeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { CodeView } from "@/components/code-view";
 import { FileExplorer } from "@/components/file-explorer";
 import { UserControl } from "@/components/user-control";
 import { useAuth } from "@clerk/nextjs";
@@ -27,12 +24,6 @@ interface Props {
 }
 
 export const ProjectView = ({ projectId }: Props) => {
-  const trpc = useTRPC();
-  const { data: project } = useSuspenseQuery(
-    trpc.projects.getOne.queryOptions({
-      id: projectId,
-    })
-  );
   const { has } = useAuth();
   const hasProAccess = has?.({ plan: "pro_user" });
 
