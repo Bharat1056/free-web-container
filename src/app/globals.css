@@ -225,4 +225,10 @@
       transform: translateY(-50%);
     }
   }
+
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
 }
