@@ -55,3 +55,8 @@ model Fragment {
   updatedAt DateTime @updatedAt
 }
 
+model Usage {
+  key String @id
+  points Int
+  expire DateTime?
+}

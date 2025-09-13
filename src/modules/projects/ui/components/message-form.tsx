@@ -5,12 +5,14 @@ import { z } from "zod";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowUpIcon, Loader2Icon } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
+import { Usage } from "@/modules/projects/ui/components/usage";
+import { useRouter } from "next/navigation";
 
 interface Props {
   projectId: string;
@@ -24,8 +26,11 @@ const formSchema = z.object({
 });
 
 export const MessageForm = ({ projectId }: Props) => {
+  const router = useRouter();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+
+  const { data: usage } = useQuery(trpc.usage.status.queryOptions());
 
   const createMessage = useMutation({
     ...trpc.messages.create.mutationOptions(),
@@ -34,10 +39,15 @@ export const MessageForm = ({ projectId }: Props) => {
       queryClient.invalidateQueries(
         trpc.messages.getMany.queryOptions({ projectId })
       );
-      // TODO: Invalidate Usage status
+      queryClient.invalidateQueries(trpc.usage.status.queryOptions());
     },
     onError: (error) => {
-      // TODO: redirect to pricing page
+      if (
+        error.data?.code === "TOO_MANY_REQUESTS" &&
+        error.message === "You have run out of credits"
+      ) {
+        router.push("/pricing");
+      }
       toast.error(error.message);
     },
   });
@@ -57,12 +67,18 @@ export const MessageForm = ({ projectId }: Props) => {
   });
 
   const [isFocused, setIsFocused] = useState(false);
-  const [showUsage, setShowUsage] = useState(false);
+  const [showUsage, setShowUsage] = useState(true);
   const isPending = createMessage.isPending;
   const isButtonDisabled = isPending || !form.formState.isValid;
 
   return (
     <Form {...form}>
+      {showUsage && (
+        <Usage
+          points={usage?.remainingPoints ?? 0}
+          msBeforeNext={usage?.msBeforeNext ?? 0}
+        />
+      )}
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn(
