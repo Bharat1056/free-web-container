@@ -33,10 +33,16 @@ export const ProjectForm = () => {
     ...trpc.projects.create.mutationOptions(),
     onSuccess: (data) => {
       queryClient.invalidateQueries(trpc.projects.getMany.queryOptions());
-      // TODO: Invalidate Usage status
+      queryClient.invalidateQueries(trpc.usage.status.queryOptions());
       router.push(`/projects/${data.id}`);
     },
     onError: (error) => {
+      if (
+        error.data?.code === "TOO_MANY_REQUESTS" &&
+        error.message === "You have run out of credits"
+      ) {
+        router.push("/pricing");
+      }
       toast.error(error.message);
     },
   });
