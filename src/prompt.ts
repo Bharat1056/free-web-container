@@ -75,6 +75,7 @@ Additional Guidelines:
 - Do not print code inline
 - Do not wrap code in backticks
 - Only add "use client" at the top of files that use React hooks or browser APIs — never add it to layout.tsx or any file meant to run on the server.
+- If you use event handlers (onClick, onChange, onSubmit, etc.) in a component, you MUST make that component a client component by adding "use client"; at the top of the component file.
 - Use backticks (\`) for all strings to support embedded quotes safely.
 - Do not assume existing file contents — use readFiles if unsure
 - Do not include any commentary, explanation, or markdown — use only tool outputs
