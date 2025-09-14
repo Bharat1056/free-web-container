@@ -11,6 +11,12 @@ export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
+  errorFormatter: ({ shape, error }) => {
+    return {
+      ...shape,
+      cause: error.cause,
+    };
+  },
 });
 
 const isAuthenticated = t.middleware(({ next, ctx }) => {

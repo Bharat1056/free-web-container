@@ -14,6 +14,7 @@ import { Form, FormField } from "@/components/ui/form";
 import { useRouter } from "next/navigation";
 import { PROJECT_TEMPLATES } from "@/modules/home/constants";
 import { useClerk, useUser } from "@clerk/nextjs";
+import { isTRPCClientError } from "@trpc/client";
 
 const formSchema = z.object({
   value: z
@@ -37,12 +38,23 @@ export const ProjectForm = () => {
       router.push(`/projects/${data.id}`);
     },
     onError: (error) => {
-      if (
-        error.data?.code === "TOO_MANY_REQUESTS" &&
-        error.message === "You have run out of credits"
-      ) {
-        router.push("/pricing");
+      if (isTRPCClientError(error)) {
+        if (
+          error.data?.code === "TOO_MANY_REQUESTS" &&
+          error.message === "You have run out of credits"
+        ) {
+          router.push("/pricing");
+        }
+        if (
+          error.data?.code === "BAD_REQUEST" &&
+          error.message === "BAD_PROMPT"
+        ) {
+          toast.error(error?.message);
+          return;
+        }
       }
+      queryClient.invalidateQueries(trpc.usage.status.queryOptions());
+      queryClient.invalidateQueries(trpc.projects.getMany.queryOptions());
       toast.error(error.message);
     },
   });

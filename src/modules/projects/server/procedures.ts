@@ -4,7 +4,8 @@ import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { z } from "zod";
 import { generateSlug } from "random-word-slugs";
 import { TRPCError } from "@trpc/server";
-import { consumeUsage } from '@/lib/usage';
+import { consumeUsage } from "@/lib/usage";
+import { validatePrompt } from "@/modules/validation/server/validate-prompt";
 
 export const projectsRouter = createTRPCRouter({
   getOne: protectedProcedure
@@ -68,6 +69,15 @@ export const projectsRouter = createTRPCRouter({
           });
         }
       }
+
+      const validation = await validatePrompt(input.value);
+      if (!validation.isValid) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "BAD_PROMPT",
+        });
+      }
+
       const createdProject = await prisma.project.create({
         data: {
           userId: ctx.auth.userId,
