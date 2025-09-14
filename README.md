@@ -1,12 +1,12 @@
-# Heartifact - AI-Powered Web Development Platform
+# Vibe - AI-Powered Web Development Platform
 
 ## 🎯 Our Mission
 
-**Heartifact** is an innovative AI-powered web development platform that transforms natural language descriptions into fully functional web applications. We're building the future where anyone can create sophisticated web applications through conversational AI, eliminating the traditional barriers between ideas and implementation.
+**Vibe** is an innovative AI-powered web development platform that transforms natural language descriptions into fully functional web applications. We're building the future where anyone can create sophisticated web applications through conversational AI, eliminating the traditional barriers between ideas and implementation.
 
 ## 🚀 What We're Building
 
-Heartifact is a comprehensive platform that combines:
+Vibe is a comprehensive platform that combines:
 
 - **AI Agent System**: Powered by GPT-4, our intelligent coding agent understands complex requirements and generates production-ready code
 - **Sandboxed Development Environment**: Secure, isolated environments using E2B for safe code execution and testing
@@ -232,7 +232,7 @@ model Fragment {
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd heartifact
+cd Vibe
 
 # Install dependencies
 npm install
@@ -281,6 +281,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Heartifact** - Where ideas become applications through the power of AI. 🚀
+**Vibe** - Where ideas become applications through the power of AI. 🚀
 
 _Building the future of web development, one conversation at a time._

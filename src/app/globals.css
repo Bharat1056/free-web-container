@@ -173,6 +173,16 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Hide scrollbars across the website */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Firefox scrollbar hiding */
+  * {
+    scrollbar-width: none;
+  }
 }
 
 @layer base {
