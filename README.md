@@ -674,3 +674,6 @@ if (isError) {
 ---
 
 _This six-agent system represents a sophisticated approach to automated website generation, combining AI-powered prompt validation, intelligent decision making, professional design enhancement, production-ready code generation, and user-friendly output formatting through intelligent agent collaboration and shared state management._
+
+<img width="1327" height="557" alt="image" src="https://github.com/user-attachments/assets/c4c878fe-1dbd-492b-a766-772fccd0e9f9" />
+
