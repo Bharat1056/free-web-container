@@ -11,7 +11,7 @@ export default function Page() {
         <div className="flex flex-col items-center">
           <Image
             src="/logo.svg"
-            alt="Heartifact"
+            alt="Vibe"
             width={50}
             height={50}
             className="hidden md:block"
