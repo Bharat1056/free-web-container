@@ -25,6 +25,7 @@ import {
 } from "@/prompt";
 import prisma from "@/lib/db";
 import { SANDBOX_TIMEOUT } from "@/types";
+import { generateSlug } from "random-word-slugs";
 
 interface AgentState {
   summary: string;
@@ -36,6 +37,8 @@ interface AgentState {
   maxEnhancementRetries: number;
   needsEnhancement?: boolean;
   decisionMade: boolean;
+  decisionError: boolean;
+  hasHistory: boolean;
 }
 
 const MAX_ENHANCEMENT_RETRIES = 2;
@@ -52,20 +55,33 @@ const decisionAgent = createAgent<AgentState>({
   }),
   lifecycle: {
     onResponse: async ({ result, network }) => {
-      const lastAssistantMessageText = lastAssistantTextMessageContent(result)
-        ?.trim()
-        .toUpperCase();
-      if (network && lastAssistantMessageText) {
-        if (lastAssistantMessageText === "ENHANCE") {
-          network.state.data.needsEnhancement = true;
-          network.state.data.validated = false; // Need to run enhancement
-        } else if (lastAssistantMessageText === "CODE") {
+      try {
+        const lastAssistantMessageText = lastAssistantTextMessageContent(result)
+          ?.trim()
+          .toUpperCase();
+        if (network && lastAssistantMessageText) {
+          if (lastAssistantMessageText === "ENHANCE") {
+            network.state.data.needsEnhancement = true;
+            network.state.data.validated = false; // Need to run enhancement
+          } else if (lastAssistantMessageText === "CODE") {
+            network.state.data.needsEnhancement = false;
+            network.state.data.validated = true;
+          }
+          network.state.data.decisionMade = true;
+          network.state.data.decisionError = false;
+        }
+        return result;
+      } catch (error) {
+        // Mimic onError behavior
+        if (network) {
+          network.state.data.decisionError = true;
+          network.state.data.decisionMade = true;
           network.state.data.needsEnhancement = false;
           network.state.data.validated = true;
         }
-        network.state.data.decisionMade = true;
+        console.error("Decision agent error:", error);
+        return result;
       }
-      return result;
     },
   },
 });
@@ -81,33 +97,44 @@ const websiteDesignEnhancementAgent = createAgent<AgentState>({
   }),
   lifecycle: {
     onResponse: async ({ result, network }) => {
-      const lastAssistantMessageText = lastAssistantTextMessageContent(result);
-      if (network && lastAssistantMessageText) {
-        // Check if enhancement was successful (has meaningful content)
-        if (
-          lastAssistantMessageText.length > 50 &&
-          lastAssistantMessageText.includes("-")
-        ) {
-          // Enhancement successful - store the enhanced prompt
-          network.state.data.enhancedPrompt = lastAssistantMessageText;
-          network.state.data.validated = true;
-        } else {
-          // Enhancement failed - check retry count
+      try {
+        const lastAssistantMessageText =
+          lastAssistantTextMessageContent(result);
+        if (network && lastAssistantMessageText) {
+          // Check if enhancement was successful (has meaningful content)
           if (
-            network.state.data.enhancementRetryCount >=
-            network.state.data.maxEnhancementRetries
+            lastAssistantMessageText.length > 50 &&
+            lastAssistantMessageText.includes("-")
           ) {
-            // Max retries reached - skip to coding agent with original prompt
+            // Enhancement successful - store the enhanced prompt
+            network.state.data.enhancedPrompt = lastAssistantMessageText;
             network.state.data.validated = true;
-            network.state.data.enhancedPrompt = undefined; // Use original prompt
           } else {
-            // Retry enhancement
-            network.state.data.enhancementRetryCount += 1;
-            network.state.data.validated = false;
+            // Enhancement failed - check retry count
+            if (
+              network.state.data.enhancementRetryCount >=
+              network.state.data.maxEnhancementRetries
+            ) {
+              // Max retries reached - skip to coding agent with original prompt
+              network.state.data.validated = true;
+              network.state.data.enhancedPrompt = undefined; // Use original prompt
+            } else {
+              // Retry enhancement
+              network.state.data.enhancementRetryCount += 1;
+              network.state.data.validated = false;
+            }
           }
         }
+        return result;
+      } catch (error) {
+        // Mimic onError behavior - if website design enhancement throws error, handle to coding agent
+        if (network) {
+          network.state.data.validated = true;
+          network.state.data.enhancedPrompt = undefined; // Use original prompt
+        }
+        console.error("Website design enhancement agent error:", error);
+        return result;
       }
-      return result;
     },
   },
 });
@@ -263,7 +290,7 @@ export const codeAgentFunction = inngest.createFunction(
             content: message.content,
           });
         }
-        return formattedMessages.reverse();
+        return formattedMessages;
       }
     );
 
@@ -278,9 +305,11 @@ export const codeAgentFunction = inngest.createFunction(
         maxEnhancementRetries: MAX_ENHANCEMENT_RETRIES,
         needsEnhancement: undefined,
         decisionMade: false,
+        decisionError: false,
+        hasHistory: previousMessages.length > 1, // More than just the current user message
       },
       {
-        messages: previousMessages,
+        messages: previousMessages.reverse(),
       }
     );
 
@@ -293,6 +322,12 @@ export const codeAgentFunction = inngest.createFunction(
         // First, make decision if not made yet
         if (!network.state.data.decisionMade) {
           return decisionAgent;
+        }
+
+        // If decision agent had an error, fallback to code agent
+        if (network.state.data.decisionError) {
+          network.state.data.validated = true;
+          return codeAgent;
         }
 
         // If decision says we need enhancement and haven't exceeded retries
@@ -323,14 +358,34 @@ export const codeAgentFunction = inngest.createFunction(
 
     const result = await network.run(event.data.value, { state });
 
-    const { output: fragmentTitleOutput } = await fragmentTitleGenerator.run(
-      result.state.data.summary,
-      { state }
-    );
-    const { output: responseOutput } = await responseGenerator.run(
-      result.state.data.summary,
-      { state }
-    );
+    // Handle fragment title generator with error fallback
+    let fragmentTitleOutput;
+    try {
+      const fragmentResult = await fragmentTitleGenerator.run(
+        result.state.data.summary,
+        { state }
+      );
+      fragmentTitleOutput = fragmentResult.output;
+    } catch (error) {
+      // If fragment title generator shows error, use random slug like in project creation
+      fragmentTitleOutput = generateSlug(2, {
+        format: "title",
+      });
+    }
+
+    // Handle response generator with error fallback
+    let responseOutput;
+    try {
+      const responseResult = await responseGenerator.run(
+        result.state.data.summary,
+        { state }
+      );
+      responseOutput = responseResult.output;
+    } catch (error) {
+      // If response generator throws error after retry, return success message
+      responseOutput =
+        "Great! Your query is ready. The code has been prepared and is ready to use.";
+    }
 
     const isError =
       !result.state.data.summary ||
@@ -356,13 +411,19 @@ export const codeAgentFunction = inngest.createFunction(
       return await prisma.message.create({
         data: {
           projectId: event.data.projectId,
-          content: parseAgentOutput(responseOutput),
+          content:
+            typeof responseOutput === "string"
+              ? responseOutput
+              : parseAgentOutput(responseOutput),
           role: "ASSISTANT",
           type: "RESULT",
           fragment: {
             create: {
               sandboxUrl,
-              title: parseAgentOutput(fragmentTitleOutput),
+              title:
+                typeof fragmentTitleOutput === "string"
+                  ? fragmentTitleOutput
+                  : parseAgentOutput(fragmentTitleOutput),
               files: result.state.data.files,
             },
           },
@@ -372,7 +433,10 @@ export const codeAgentFunction = inngest.createFunction(
 
     return {
       url: sandboxUrl,
-      title: parseAgentOutput(fragmentTitleOutput),
+      title:
+        typeof fragmentTitleOutput === "string"
+          ? fragmentTitleOutput
+          : parseAgentOutput(fragmentTitleOutput),
       files: result.state.data.files,
       summary: result.state.data.summary,
     };

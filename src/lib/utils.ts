@@ -7,6 +7,42 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Safely sanitize theme values to prevent DOM errors from corrupted localStorage
+ * @param theme - The theme value to validate
+ * @returns A safe theme value
+ */
+export function sanitizeTheme(theme: string | undefined | null): string {
+  // If theme is undefined, null, or not a string, return default
+  if (!theme || typeof theme !== "string") {
+    return "light";
+  }
+
+  // Valid theme values that are safe to use as CSS classes
+  const validThemes = ["light", "dark", "system"];
+
+  // If theme is a valid theme name, return it
+  if (validThemes.includes(theme)) {
+    return theme;
+  }
+
+  // If theme looks like JSON, contains spaces, or is too long, return default
+  if (
+    theme.includes("{") ||
+    theme.includes("}") ||
+    theme.includes(" ") ||
+    theme.includes('"') ||
+    theme.length > 20 ||
+    theme.includes("\n") ||
+    theme.includes("\t")
+  ) {
+    return "light";
+  }
+
+  // Default fallback
+  return "light";
+}
+
+/**
  * Convert a record of files to a tree structure.
  * @param files - Record of file paths to content
  * @returns Tree structure for TreeView component
