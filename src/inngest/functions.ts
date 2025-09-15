@@ -264,141 +264,217 @@ export const codeAgentFunction = inngest.createFunction(
   { id: "create-website" },
   { event: "test/create.website" },
   async ({ event, step }) => {
-    const sandboxId = await step.run("get-sandbox-id", async () => {
-      const sandbox = await Sandbox.create("vibe-three");
-      await sandbox.setTimeout(SANDBOX_TIMEOUT);
-      return sandbox.sandboxId;
-    });
+    try {
+      const sandboxId = await step.run("get-sandbox-id", async () => {
+        const sandbox = await Sandbox.create("vibe-three");
+        await sandbox.setTimeout(SANDBOX_TIMEOUT);
+        return sandbox.sandboxId;
+      });
 
-    const previousMessages = await step.run(
-      "get-previous-messages",
-      async () => {
-        const formattedMessages: Message[] = [];
-        const messages = await prisma.message.findMany({
+      const previousMessages = await step.run(
+        "get-previous-messages",
+        async () => {
+          const formattedMessages: Message[] = [];
+          const messages = await prisma.message.findMany({
+            where: {
+              projectId: event.data.projectId,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 5,
+          });
+          for (const message of messages) {
+            formattedMessages.push({
+              type: "text",
+              role: message.role === "ASSISTANT" ? "assistant" : "user",
+              content: message.content,
+            });
+          }
+          return formattedMessages;
+        }
+      );
+
+      // Load existing files from previous fragment if available
+      const existingFiles = await step.run("load-existing-files", async () => {
+        const existingFragment = await prisma.fragment.findFirst({
           where: {
-            projectId: event.data.projectId,
+            message: {
+              projectId: event.data.projectId,
+            },
           },
           orderBy: {
             createdAt: "desc",
           },
-          take: 5,
         });
-        for (const message of messages) {
-          formattedMessages.push({
-            type: "text",
-            role: message.role === "ASSISTANT" ? "assistant" : "user",
-            content: message.content,
+
+        if (existingFragment?.files) {
+          return existingFragment.files as { [path: string]: string };
+        }
+        return {};
+      });
+
+      const state = createState<AgentState>(
+        {
+          summary: "",
+          files: existingFiles, // Load existing files instead of empty object
+          validated: false,
+          sandboxId,
+          enhancedPrompt: undefined,
+          enhancementRetryCount: 0,
+          maxEnhancementRetries: MAX_ENHANCEMENT_RETRIES,
+          needsEnhancement: undefined,
+          decisionMade: false,
+          decisionError: false,
+          hasHistory: previousMessages.length > 1, // More than just the current user message
+        },
+        {
+          messages: previousMessages.reverse(),
+        }
+      );
+
+      const network = createNetwork<AgentState>({
+        name: "website-builder-network",
+        agents: [decisionAgent, websiteDesignEnhancementAgent, codeAgent],
+        maxIter: 15,
+        defaultState: state,
+        router: async ({ network }) => {
+          // First, make decision if not made yet
+          if (!network.state.data.decisionMade) {
+            return decisionAgent;
+          }
+
+          // If decision agent had an error, fallback to code agent
+          if (network.state.data.decisionError) {
+            network.state.data.validated = true;
+            return codeAgent;
+          }
+
+          // If decision says we need enhancement and haven't exceeded retries
+          if (
+            network.state.data.needsEnhancement &&
+            !network.state.data.validated &&
+            network.state.data.enhancementRetryCount <
+              network.state.data.maxEnhancementRetries
+          ) {
+            return websiteDesignEnhancementAgent;
+          }
+
+          // If validated (either enhanced or direct to coding) and no summary yet
+          if (network.state.data.validated && !network.state.data.summary) {
+            // Add enhanced prompt to the conversation before coding agent runs
+            if (network.state.data.enhancedPrompt) {
+              network.state.messages.push({
+                type: "text",
+                role: "user",
+                content: `ENHANCED DESIGN REQUIREMENTS:\n${network.state.data.enhancedPrompt}\n\nPlease implement this enhanced design specification.`,
+              });
+            }
+
+            // If we have existing files, add context about the current state
+            if (Object.keys(network.state.data.files).length > 0) {
+              network.state.messages.push({
+                type: "text",
+                role: "user",
+                content: `CONTEXT: You are working on an existing project. The current files are already created and available in the sandbox. Please modify the existing code according to the user's request.`,
+              });
+            }
+
+            return codeAgent;
+          }
+          return;
+        },
+      });
+
+      const result = await network.run(event.data.value, { state });
+
+      // Handle fragment title generator with error fallback
+      let fragmentTitleOutput;
+      try {
+        const fragmentResult = await fragmentTitleGenerator.run(
+          result.state.data.summary,
+          { state }
+        );
+        fragmentTitleOutput = fragmentResult.output;
+      } catch (error) {
+        // If fragment title generator shows error, use random slug like in project creation
+        fragmentTitleOutput = generateSlug(2, {
+          format: "title",
+        });
+      }
+
+      // Handle response generator with error fallback
+      let responseOutput;
+      try {
+        const responseResult = await responseGenerator.run(
+          result.state.data.summary,
+          { state }
+        );
+        responseOutput = responseResult.output;
+      } catch (error) {
+        // If response generator throws error after retry, return success message
+        responseOutput =
+          "Great! Your query is ready. The code has been prepared and is ready to use.";
+      }
+
+      const isError =
+        !result.state.data.summary ||
+        Object.keys(result.state.data.files || {}).length === 0;
+
+      const sandboxUrl = await step.run("get-sandbox-url", async () => {
+        const sandbox = await getSandbox(sandboxId);
+        const host = sandbox.getHost(3000);
+        return `https://${host}`;
+      });
+
+      await step.run("save-result", async () => {
+        if (isError) {
+          return await prisma.message.create({
+            data: {
+              content: "Something went wrong. Please try again",
+              role: "ASSISTANT",
+              type: "ERROR",
+              projectId: event.data.projectId,
+            },
           });
         }
-        return formattedMessages;
-      }
-    );
-
-    const state = createState<AgentState>(
-      {
-        summary: "",
-        files: {},
-        validated: false,
-        sandboxId,
-        enhancedPrompt: undefined,
-        enhancementRetryCount: 0,
-        maxEnhancementRetries: MAX_ENHANCEMENT_RETRIES,
-        needsEnhancement: undefined,
-        decisionMade: false,
-        decisionError: false,
-        hasHistory: previousMessages.length > 1, // More than just the current user message
-      },
-      {
-        messages: previousMessages.reverse(),
-      }
-    );
-
-    const network = createNetwork<AgentState>({
-      name: "website-builder-network",
-      agents: [decisionAgent, websiteDesignEnhancementAgent, codeAgent],
-      maxIter: 15,
-      defaultState: state,
-      router: async ({ network }) => {
-        // First, make decision if not made yet
-        if (!network.state.data.decisionMade) {
-          return decisionAgent;
-        }
-
-        // If decision agent had an error, fallback to code agent
-        if (network.state.data.decisionError) {
-          network.state.data.validated = true;
-          return codeAgent;
-        }
-
-        // If decision says we need enhancement and haven't exceeded retries
-        if (
-          network.state.data.needsEnhancement &&
-          !network.state.data.validated &&
-          network.state.data.enhancementRetryCount <
-            network.state.data.maxEnhancementRetries
-        ) {
-          return websiteDesignEnhancementAgent;
-        }
-
-        // If validated (either enhanced or direct to coding) and no summary yet
-        if (network.state.data.validated && !network.state.data.summary) {
-          // Add enhanced prompt to the conversation before coding agent runs
-          if (network.state.data.enhancedPrompt) {
-            network.state.messages.push({
-              type: "text",
-              role: "user",
-              content: `ENHANCED DESIGN REQUIREMENTS:\n${network.state.data.enhancedPrompt}\n\nPlease implement this enhanced design specification.`,
-            });
-          }
-          return codeAgent;
-        }
-        return;
-      },
-    });
-
-    const result = await network.run(event.data.value, { state });
-
-    // Handle fragment title generator with error fallback
-    let fragmentTitleOutput;
-    try {
-      const fragmentResult = await fragmentTitleGenerator.run(
-        result.state.data.summary,
-        { state }
-      );
-      fragmentTitleOutput = fragmentResult.output;
-    } catch (error) {
-      // If fragment title generator shows error, use random slug like in project creation
-      fragmentTitleOutput = generateSlug(2, {
-        format: "title",
+        return await prisma.message.create({
+          data: {
+            projectId: event.data.projectId,
+            content:
+              typeof responseOutput === "string"
+                ? responseOutput
+                : parseAgentOutput(responseOutput),
+            role: "ASSISTANT",
+            type: "RESULT",
+            fragment: {
+              create: {
+                sandboxUrl,
+                title:
+                  typeof fragmentTitleOutput === "string"
+                    ? fragmentTitleOutput
+                    : parseAgentOutput(fragmentTitleOutput),
+                files: result.state.data.files,
+              },
+            },
+          },
+        });
       });
-    }
 
-    // Handle response generator with error fallback
-    let responseOutput;
-    try {
-      const responseResult = await responseGenerator.run(
-        result.state.data.summary,
-        { state }
-      );
-      responseOutput = responseResult.output;
+      return {
+        url: sandboxUrl,
+        title:
+          typeof fragmentTitleOutput === "string"
+            ? fragmentTitleOutput
+            : parseAgentOutput(fragmentTitleOutput),
+        files: result.state.data.files,
+        summary: result.state.data.summary,
+      };
     } catch (error) {
-      // If response generator throws error after retry, return success message
-      responseOutput =
-        "Great! Your query is ready. The code has been prepared and is ready to use.";
-    }
+      // If everything fails, save error message to database
+      console.error("Complete function failure:", error);
 
-    const isError =
-      !result.state.data.summary ||
-      Object.keys(result.state.data.files || {}).length === 0;
-
-    const sandboxUrl = await step.run("get-sandbox-url", async () => {
-      const sandbox = await getSandbox(sandboxId);
-      const host = sandbox.getHost(3000);
-      return `https://${host}`;
-    });
-
-    await step.run("save-result", async () => {
-      if (isError) {
+      await step.run("save-error-message", async () => {
         return await prisma.message.create({
           data: {
             content: "Something went wrong. Please try again",
@@ -407,38 +483,10 @@ export const codeAgentFunction = inngest.createFunction(
             projectId: event.data.projectId,
           },
         });
-      }
-      return await prisma.message.create({
-        data: {
-          projectId: event.data.projectId,
-          content:
-            typeof responseOutput === "string"
-              ? responseOutput
-              : parseAgentOutput(responseOutput),
-          role: "ASSISTANT",
-          type: "RESULT",
-          fragment: {
-            create: {
-              sandboxUrl,
-              title:
-                typeof fragmentTitleOutput === "string"
-                  ? fragmentTitleOutput
-                  : parseAgentOutput(fragmentTitleOutput),
-              files: result.state.data.files,
-            },
-          },
-        },
       });
-    });
 
-    return {
-      url: sandboxUrl,
-      title:
-        typeof fragmentTitleOutput === "string"
-          ? fragmentTitleOutput
-          : parseAgentOutput(fragmentTitleOutput),
-      files: result.state.data.files,
-      summary: result.state.data.summary,
-    };
+      // Return error response
+      throw error;
+    }
   }
 );
