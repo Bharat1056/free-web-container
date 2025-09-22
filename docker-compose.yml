@@ -1,0 +1,69 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: lovable-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: lovable
+      MYSQL_USER: lovable
+      MYSQL_PASSWORD: lovablepassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - lovable-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Next.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lovable-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=mysql://lovable:lovablepassword@mysql:3306/lovable
+      - INNGEST_DEV=1
+      - INNGEST_BASE_URL=http://inngest:8288
+      - INNGEST_EVENT_KEY=your-event-key-here
+      - INNGEST_SIGNING_KEY=your-signing-key-here
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - lovable-network
+    command: npm run dev
+
+  # Inngest Dev Server
+  inngest:
+    image: inngest/inngest:latest
+    container_name: lovable-inngest
+    restart: unless-stopped
+    command: "inngest dev -u http://app:3000/api/inngest"
+    ports:
+      - "8288:8288"
+    networks:
+      - lovable-network
+    depends_on:
+      - mysql
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  lovable-network:
+    driver: bridge
