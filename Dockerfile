@@ -1,14 +1,13 @@
-# Use Node.js 22.16.0 Alpine for smaller image size
 FROM node:22.16.0-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
 RUN npm ci
 
 # Rebuild the source code only when needed
@@ -20,7 +19,16 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
-# Build the application
+# Build the application with build-time environment variables
+ARG GROQ_API_KEY
+ARG E2B_API_KEY
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG CLERK_SECRET_KEY
+ENV GROQ_API_KEY=$GROQ_API_KEY
+ENV E2B_API_KEY=$E2B_API_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV CLERK_SECRET_KEY=$CLERK_SECRET_KEY
+
 RUN npm run build
 
 # Production image, copy all the files and run next
@@ -40,8 +48,6 @@ COPY --from=builder /app/public ./public
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
 
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
