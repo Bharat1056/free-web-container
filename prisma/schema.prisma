@@ -9,8 +9,8 @@ datasource db {
 
 model Project {
   id String @id @default(cuid())
-  name String
-  userId String
+  name String @db.VarChar(255)
+  userId String @db.VarChar(255)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -30,7 +30,7 @@ enum MessageType {
 
 model Message {
   id String @id @default(cuid())
-  content String
+  content String @db.Text
   role MessageRole
   type MessageType
   createdAt DateTime @default(now())
@@ -47,8 +47,8 @@ model Fragment {
   messageId String @unique
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
-  sandboxUrl String
-  title String
+  sandboxUrl String @db.VarChar(500)
+  title String @db.VarChar(255)
   files Json
 
   createdAt DateTime @default(now())
