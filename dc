@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Simple alias for docker-compose.sh
-# Usage: ./dc up -d dev    # Start development
-#        ./dc up -d prod   # Start production
+# Usage: ./dc up dev    # Start development
+#        ./dc up prod   # Start production
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
