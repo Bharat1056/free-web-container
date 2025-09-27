@@ -21,7 +21,7 @@ COPY tsconfig.json ./
 COPY components.json ./
 COPY postcss.config.mjs ./
 COPY eslint.config.mjs ./
-COPY next-env.d.ts ./
+COPY next-env.d.ts* ./
 
 # Generate Prisma client
 RUN npx prisma generate
