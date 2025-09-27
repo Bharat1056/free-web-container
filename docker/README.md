@@ -316,31 +316,31 @@ tail -f /var/log/lovable-deployment.log
 
 1. **Port already in use**
 
-   ```bash
+```bash
    # Check what's using the port
    sudo netstat -tulpn | grep :3000
 
    # Kill the process
    sudo kill -9 <PID>
-   ```
+```
 
 2. **Nginx config test fails**
 
-   ```bash
+```bash
    # Test nginx config
    sudo nginx -t
 
    # Check for syntax errors
    sudo nginx -T
-   ```
+```
 
 3. **Health check fails**
 
-   ```bash
+```bash
    # Test health endpoint manually
    curl -f http://localhost:3000/api/health
    curl -f http://localhost:3001/api/health
-   ```
+```
 
 4. **Database connection issues**
    ```bash
@@ -368,23 +368,23 @@ If a deployment fails, you can quickly rollback:
 
 1. **Firewall Configuration**
 
-   ```bash
+```bash
    # Only allow necessary ports
    sudo ufw allow 22    # SSH
    sudo ufw allow 80    # HTTP
    sudo ufw allow 443   # HTTPS
    sudo ufw enable
-   ```
+```
 
 2. **SSL Certificate (Recommended)**
 
-   ```bash
+```bash
    # Install Certbot
    sudo apt install certbot python3-certbot-nginx -y
 
    # Get SSL certificate
    sudo certbot --nginx -d your-domain.com
-   ```
+```
 
 3. **Environment Variables**
    - Never commit `.env.prod` to version control

@@ -58,7 +58,7 @@ jobs:
         run: |
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to VPS
+      - name: Deploy to VPS using Blue-Green
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
             # Navigate to project directory
@@ -66,12 +66,6 @@ jobs:
 
             # Pull latest changes
             git pull origin main
-
-            # Stop existing containers
-            docker-compose -f docker/instructions/docker-compose.app.yml down
-
-            # Remove old images to free up space
-            docker system prune -f
 
             # Pull latest image from Docker Hub
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/lovable:latest
@@ -122,43 +116,15 @@ jobs:
           DEPLOYMENT_VERSION=${{ github.sha }}
           ENVEOF
 
-            # Start containers (no build needed, using pre-built image)
-            docker-compose -f docker/instructions/docker-compose.app.yml --env-file .env.prod up -d
+            # Make deployment script executable
+            chmod +x docker/scripts/deploy-blue-green-automated.sh
 
-            # Wait for services to be ready
-            echo "Waiting for services to start..."
-            sleep 30
+            # Run automated blue-green deployment
+            ./docker/scripts/deploy-blue-green-automated.sh deploy latest
 
-            # Check service health
-            echo "Checking service health..."
-
-            # Check if MySQL is ready
-            if docker-compose -f docker/instructions/docker-compose.app.yml exec -T mysql mysqladmin ping -h localhost --silent; then
-              echo "✅ MySQL is ready"
-            else
-              echo "❌ MySQL is not ready"
-              exit 1
-            fi
-
-            # Check if Next.js app is ready
-            if curl -f http://localhost:3000 > /dev/null 2>&1; then
-              echo "✅ Next.js app is ready"
-            else
-              echo "❌ Next.js app is not ready"
-              exit 1
-            fi
-
-            # Check if Inngest is ready
-            if curl -f http://localhost:8288 > /dev/null 2>&1; then
-              echo "✅ Inngest is ready"
-            else
-              echo "❌ Inngest is not ready"
-              exit 1
-            fi
-
-            echo "🎉 Deployment completed successfully!"
-            echo "📱 Next.js App: http://${{ secrets.VPS_HOST }}:3000"
-            echo "⚡ Inngest: http://${{ secrets.VPS_HOST }}:8288"
+            echo "🎉 Blue-Green deployment completed successfully!"
+            echo "📱 Production App: http://${{ secrets.VPS_HOST }}"
+            echo "🔧 Development App: http://${{ secrets.VPS_HOST }}:8080"
           EOF
 
       - name: Notify deployment status

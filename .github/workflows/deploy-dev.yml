@@ -145,75 +145,23 @@ jobs:
               exit 1
             fi
 
-            # Stop existing dev containers (now with env file available)
-            echo "🛑 Stopping existing dev containers..."
-            docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev down
-
-            # Remove old dev images to free up space
-            echo "🧹 Cleaning up old Docker images..."
-            docker system prune -f
-
             # Pull latest dev image from Docker Hub
             echo "📥 Pulling latest dev image from Docker Hub..."
             docker pull "${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev:dev"
 
-            # Start dev containers (no build needed, using pre-built image)
-            echo "🚀 Starting dev containers..."
-            docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev up -d
+            # Make deployment script executable
+            chmod +x docker/scripts/deploy-blue-green-automated.sh
 
-            # Wait for services to be ready
-            echo "⏳ Waiting for dev services to start..."
-            sleep 30
-
-            # Check service health
-            echo "🔍 Checking dev service health..."
-
-            # Check if MySQL is ready
-            echo "🗄️  Checking MySQL connection..."
-            if docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
-              echo "✅ MySQL (dev) is ready"
-            else
-              echo "❌ MySQL (dev) is not ready"
-              # Show MySQL logs for debugging
-              echo "📋 MySQL logs:"
-              docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev logs mysql --tail=20
-              exit 1
-            fi
-
-            # Check if Next.js app is ready (dev server takes longer to start)
-            echo "⚛️  Checking Next.js app..."
-            echo "⏳ Waiting for Next.js dev server to start..."
-            sleep 20
-            if curl -f http://localhost:3001 > /dev/null 2>&1; then
-              echo "✅ Next.js app (dev) is ready"
-            else
-              echo "⏳ Next.js app (dev) is still starting (this is normal for dev mode)"
-              echo "📋 App logs:"
-              docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev logs app --tail=10
-            fi
-
-            # Check if Inngest is ready
-            echo "⚡ Checking Inngest service..."
-            if curl -f http://localhost:8289 > /dev/null 2>&1; then
-              echo "✅ Inngest (dev) is ready"
-            else
-              echo "❌ Inngest (dev) is not ready"
-              echo "📋 Inngest logs:"
-              docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev logs inngest --tail=20
-              exit 1
-            fi
-
-            # Show running containers for verification
-            echo "🐳 Running containers:"
-            docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev ps
+            # Run automated blue-green deployment for development
+            echo "🚀 Starting blue-green deployment for development..."
+            ./docker/scripts/deploy-blue-green-automated.sh deploy dev
 
             echo ""
-            echo "🎉 Dev deployment completed successfully!"
-            echo "📱 Next.js App (Dev): http://${{ secrets.VPS_HOST }}:3001"
-            echo "⚡ Inngest (Dev): http://${{ secrets.VPS_HOST }}:8289"
-            echo "🗄️  MySQL (Dev): ${{ secrets.VPS_HOST }}:3307"
+            echo "🎉 Dev blue-green deployment completed successfully!"
+            echo "📱 Development App: http://${{ secrets.VPS_HOST }}:8080"
+            echo "🔧 Production App: http://${{ secrets.VPS_HOST }}"
             echo ""
-            echo "📋 Dev environment is running with hot reload enabled!"
+            echo "📋 Dev environment is running with zero-downtime deployment!"
           DEPLOY_EOF
 
       - name: Notify dev deployment status
