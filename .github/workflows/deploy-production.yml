@@ -1,14 +1,14 @@
-name: Deploy Staging
+name: Deploy Production
 
 on:
   push:
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build-and-deploy-staging:
+  build-and-deploy-production:
     runs-on: ubuntu-latest
-    environment: staging
+    environment: production
 
     steps:
       - name: Checkout code
@@ -49,7 +49,7 @@ jobs:
         run: |
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to VPS (Staging)
+      - name: Deploy to VPS (Production)
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'DEPLOY_EOF'
             set -e
@@ -57,20 +57,20 @@ jobs:
 
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Set environment variables for staging from GitHub secrets
+            # Set environment variables for production from GitHub secrets
             export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-            export APP_PORT=${{ secrets.APP_PORT_STAGING }}
-            export MYSQL_PORT=${{ secrets.MYSQL_PORT_STAGING }}
-            export INNGEST_PORT=${{ secrets.INNGEST_PORT_STAGING }}
-            export APP_CONTAINER_NAME=${{ secrets.APP_CONTAINER_NAME_STAGING }}
-            export MYSQL_CONTAINER_NAME=${{ secrets.MYSQL_CONTAINER_NAME_STAGING }}
-            export INNGEST_CONTAINER_NAME=${{ secrets.INNGEST_CONTAINER_NAME_STAGING }}
+            export APP_PORT=${{ secrets.APP_PORT_PRODUCTION }}
+            export MYSQL_PORT=${{ secrets.MYSQL_PORT_PRODUCTION }}
+            export INNGEST_PORT=${{ secrets.INNGEST_PORT_PRODUCTION }}
+            export APP_CONTAINER_NAME=${{ secrets.APP_CONTAINER_NAME_PRODUCTION }}
+            export MYSQL_CONTAINER_NAME=${{ secrets.MYSQL_CONTAINER_NAME_PRODUCTION }}
+            export INNGEST_CONTAINER_NAME=${{ secrets.INNGEST_CONTAINER_NAME_PRODUCTION }}
             export MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
             export MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
             export MYSQL_USER=${{ secrets.MYSQL_USER }}
             export MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
-            export DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}
-            export INNGEST_BASE_URL=${{ secrets.INNGEST_BASE_URL_STAGING }}
+            export DATABASE_URL=${{ secrets.DATABASE_URL_PRODUCTION }}
+            export INNGEST_BASE_URL=${{ secrets.INNGEST_BASE_URL_PRODUCTION }}
             export INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
             export INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
             export GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
@@ -82,20 +82,20 @@ jobs:
             export NEXT_PUBLIC_CLERK_SIGN_IN_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_URL }}
             export NEXT_PUBLIC_CLERK_SIGN_UP_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_UP_URL }}
 
-            # Stop existing staging services
+            # Stop existing production services
             docker-compose -f docker-compose.yml down || true
 
             # Pull the latest image
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/lovable:latest
 
-            # Start services with staging configuration
+            # Start services with production configuration
             docker-compose -f docker-compose.yml up -d
 
-            # Setup nginx configuration for staging
+            # Setup nginx configuration for production
             sudo cp nginx-lovable.conf /etc/nginx/sites-available/lovable
             sudo ln -sf /etc/nginx/sites-available/lovable /etc/nginx/sites-enabled/
             sudo rm -f /etc/nginx/sites-enabled/default
             sudo nginx -t && sudo systemctl reload nginx
 
-            echo "✅ Staging deployment completed with docker-compose and nginx!"
+            echo "✅ Production deployment completed with docker-compose and nginx!"
           DEPLOY_EOF

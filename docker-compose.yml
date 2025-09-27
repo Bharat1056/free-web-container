@@ -1,5 +1,6 @@
+version: "3.9"
+
 services:
-  # MySQL Database
   mysql:
     image: mysql:8.0
     container_name: ${MYSQL_CONTAINER_NAME}
@@ -16,38 +17,34 @@ services:
     networks:
       - lovable-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
-      retries: 10
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8288/health || exit 1"]
       interval: 30s
-      start_period: 40s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
-  # Next.js Application
   app:
     image: ${DOCKERHUB_USERNAME}/lovable:latest
     container_name: ${APP_CONTAINER_NAME}
     restart: unless-stopped
     environment:
-      - NODE_ENV=${NODE_ENV}
-      - DATABASE_URL=${DATABASE_URL}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - INNGEST_DEV=${INNGEST_DEV}
-      - INNGEST_BASE_URL=${INNGEST_BASE_URL}
-      - INNGEST_EVENT_KEY=${INNGEST_EVENT_KEY}
-      - INNGEST_SIGNING_KEY=${INNGEST_SIGNING_KEY}
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - E2B_API_KEY=${E2B_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
-      - NEXT_PUBLIC_CLERK_SIGN_IN_URL=${NEXT_PUBLIC_CLERK_SIGN_IN_URL}
-      - NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL}
-      - NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL}
-      - NEXT_PUBLIC_CLERK_SIGN_UP_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      INNGEST_BASE_URL: ${INNGEST_BASE_URL}
+      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY}
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      E2B_API_KEY: ${E2B_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL}
+      NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
     ports:
       - "${APP_PORT}:3000"
     depends_on:
@@ -55,6 +52,7 @@ services:
         condition: service_healthy
     networks:
       - lovable-network
+    command: ["npm", "run", "start"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       timeout: 10s
@@ -62,12 +60,11 @@ services:
       interval: 30s
       start_period: 60s
 
-  # Inngest
   inngest:
     image: inngest/inngest:latest
     container_name: ${INNGEST_CONTAINER_NAME}
     restart: unless-stopped
-    command: "inngest serve -u http://app:3000/api/inngest"
+    command: "inngest dev -u http://app:3000/api/inngest"
     ports:
       - "${INNGEST_PORT}:8288"
     networks:
