@@ -6,22 +6,15 @@ RUN apk add --no-cache libc6-compat
 
 WORKDIR /app
 
-# Copy package files (from project root context)
+# Copy package files
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
 # Install all dependencies (including dev dependencies)
 RUN npm ci
 
-# Copy source code (from project root context)
-COPY src ./src/
-COPY public ./public/
-COPY next.config.ts ./
-COPY tsconfig.json ./
-COPY components.json ./
-COPY postcss.config.mjs ./
-COPY eslint.config.mjs ./
-COPY next-env.d.ts* ./
+# Copy source code
+COPY . .
 
 # Generate Prisma client
 RUN npx prisma generate

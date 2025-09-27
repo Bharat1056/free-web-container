@@ -67,14 +67,19 @@ Edit `docker/instructions/nginx-lovable.conf` and replace:
 - `your-domain.com` with your actual production domain
 - `dev.your-domain.com` with your actual development domain
 
-### 2.2 Setup Nginx Configuration
+### 2.2 Nginx Configuration
+
+Nginx is already configured for blue-green deployment. The configuration includes:
+
+- Blue upstream: `127.0.0.1:3000`
+- Green upstream: `127.0.0.1:3001`
+- Active upstream file: `/etc/nginx/upstreams/active.conf`
+
+If you need to ensure upstream files exist, run:
 
 ```bash
-# Run the nginx setup script
-./docker/scripts/setup-nginx-blue-green.sh setup
-
-# Check nginx status
-./docker/scripts/setup-nginx-blue-green.sh status
+# Ensure nginx upstream files exist
+./docker/scripts/deploy-blue-green-automated.sh setup
 ```
 
 ### 2.3 Configure DNS
@@ -245,17 +250,17 @@ git push origin dev
 ### **Nginx Commands:**
 
 ```bash
-# Setup nginx
-./docker/scripts/setup-nginx-blue-green.sh setup
-
-# Check nginx status
-./docker/scripts/setup-nginx-blue-green.sh status
+# Ensure nginx upstream files exist
+./docker/scripts/deploy-blue-green-automated.sh setup
 
 # Test nginx configuration
-./docker/scripts/setup-nginx-blue-green.sh test
+sudo nginx -t
 
 # Reload nginx
-./docker/scripts/setup-nginx-blue-green.sh reload
+sudo systemctl reload nginx
+
+# Check nginx status
+sudo systemctl status nginx
 ```
 
 ### **Manual Container Management:**

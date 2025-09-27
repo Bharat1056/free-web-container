@@ -37,7 +37,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./docker/instructions/Dockerfile.dev
+          file: ./Dockerfile.dev
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -92,14 +92,45 @@ jobs:
             # Login to Docker Hub
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Create .env.dev file with secrets
+            # Detect current active environment (blue/green)
+            echo "🔍 Detecting current active environment..."
+            CURRENT_ACTIVE="blue"  # Default to blue for first deployment
+
+            # Check which port is currently active by looking at running containers
+            if docker ps --format "{{.Names}}" | grep -q "lovable-app-blue-dev"; then
+              CURRENT_ACTIVE="blue"
+              echo "🔵 Current active environment: BLUE"
+            elif docker ps --format "{{.Names}}" | grep -q "lovable-app-green-dev"; then
+              CURRENT_ACTIVE="green"
+              echo "🟢 Current active environment: GREEN"
+            else
+              echo "⚪ No active environment detected, defaulting to BLUE"
+            fi
+
+            # Determine target environment (opposite of current active)
+            if [ "$CURRENT_ACTIVE" = "blue" ]; then
+              TARGET_COLOR="green"
+              TARGET_PORT="3001"
+              echo "🎯 Deploying to: GREEN environment (port $TARGET_PORT)"
+            else
+              TARGET_COLOR="blue"
+              TARGET_PORT="3000"
+              echo "🎯 Deploying to: BLUE environment (port $TARGET_PORT)"
+            fi
+
+            # Create .env.dev file with secrets and blue-green configuration
             sudo touch .env.dev
             sudo chown $USER:$USER .env.dev
-            cat > .env.dev << 'ENV_EOF'
+            cat > .env.dev << ENV_EOF
           NODE_ENV=development
 
+          # Blue-Green Deployment Configuration
+          CURRENT_ACTIVE=$CURRENT_ACTIVE
+          TARGET_COLOR=$TARGET_COLOR
+          TARGET_PORT=$TARGET_PORT
+
           # Database Configuration
-          MYSQL_CONTAINER_NAME=lovable-mysql-dev
+          MYSQL_CONTAINER_NAME=lovable-mysql-$TARGET_COLOR-dev
           MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
           MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
           MYSQL_USER=${{ secrets.MYSQL_USER }}
@@ -108,14 +139,14 @@ jobs:
           DATABASE_URL=${{ secrets.DATABASE_URL }}
 
           # Application Configuration
-          APP_CONTAINER_NAME=lovable-app-dev
-          APP_PORT=3001
+          APP_CONTAINER_NAME=lovable-app-$TARGET_COLOR-dev
+          APP_PORT=$TARGET_PORT
 
           # Inngest Configuration
-          INNGEST_CONTAINER_NAME=lovable-inngest-dev
+          INNGEST_CONTAINER_NAME=lovable-inngest-$TARGET_COLOR-dev
           INNGEST_PORT=8289
           INNGEST_DEV=true
-          INNGEST_BASE_URL=http://localhost:3001/api/inngest
+          INNGEST_BASE_URL=http://localhost:$TARGET_PORT/api/inngest
           INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
           INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
 
@@ -143,9 +174,6 @@ jobs:
             # Debug: Show the .env.dev file contents (without sensitive data)
             echo "📄 Created .env.dev file. Checking contents..."
             if [ -f .env.dev ]; then
-              echo "✅ File exists: $(ls -la .env.dev)"
-              echo "📊 File size: $(wc -l < .env.dev) lines"
-              echo "🔍 First few lines (non-sensitive):"
               head -5 .env.dev | grep -E "^(NODE_ENV|MYSQL_CONTAINER_NAME|APP_CONTAINER_NAME|INNGEST_CONTAINER_NAME|APP_PORT|MYSQL_PORT|INNGEST_PORT|INNGEST_DEV|INNGEST_BASE_URL)=" || echo "ℹ️  No non-sensitive variables found in first 5 lines"
             else
               echo "❌ .env.dev file was not created!"
@@ -160,8 +188,7 @@ jobs:
             chmod +x docker/scripts/deploy-blue-green-automated.sh
 
             # Run automated blue-green deployment for development
-            echo "🚀 Starting blue-green deployment for development..."
-            ./docker/scripts/deploy-blue-green-automated.sh deploy dev
+            ./docker/scripts/deploy-blue-green-automated.sh deploy dev $TARGET_COLOR
 
             echo ""
             echo "🎉 Dev blue-green deployment completed successfully!"

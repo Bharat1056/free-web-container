@@ -15,7 +15,7 @@ docker/
 │   ├── env.prod.template          # Production environment template
 │   └── env.dev.template           # Development environment template
 ├── scripts/               # Deployment and management scripts
-│   └── deploy-blue-green.sh        # Blue-green deployment script
+│   └── deploy-blue-green-automated.sh  # Automated blue-green deployment script
 └── README.md             # This file
 ```
 
@@ -188,7 +188,7 @@ nano .env.dev
 ### 4. Make Deployment Script Executable
 
 ```bash
-chmod +x docker/scripts/deploy-blue-green.sh
+chmod +x docker/scripts/deploy-blue-green-automated.sh
 ```
 
 ### 5. Initial Deployment
@@ -197,20 +197,20 @@ chmod +x docker/scripts/deploy-blue-green.sh
 
 ```bash
 # Deploy to blue environment first
-./docker/scripts/deploy-blue-green.sh blue prod
+./docker/scripts/deploy-blue-green-automated.sh deploy prod blue
 
 # Check status
-./docker/scripts/deploy-blue-green.sh status
+./docker/scripts/deploy-blue-green-automated.sh status
 ```
 
 #### For Development:
 
 ```bash
 # Deploy to blue environment first
-./docker/scripts/deploy-blue-green.sh blue dev
+./docker/scripts/deploy-blue-green-automated.sh deploy dev blue
 
 # Check status
-./docker/scripts/deploy-blue-green.sh status
+./docker/scripts/deploy-blue-green-automated.sh status
 ```
 
 ## 🔄 Blue-Green Deployment
@@ -223,26 +223,26 @@ The deployment script supports zero-downtime deployments with automatic health c
 
 ```bash
 # Deploy to blue environment
-./docker/scripts/deploy-blue-green.sh blue prod
+./docker/scripts/deploy-blue-green-automated.sh deploy prod blue
 
 # Deploy to green environment
-./docker/scripts/deploy-blue-green.sh green prod
+./docker/scripts/deploy-blue-green-automated.sh deploy prod green
 
 # Check current status
-./docker/scripts/deploy-blue-green.sh status
+./docker/scripts/deploy-blue-green-automated.sh status
 ```
 
 #### Development:
 
 ```bash
 # Deploy to blue environment
-./docker/scripts/deploy-blue-green.sh blue dev
+./docker/scripts/deploy-blue-green-automated.sh deploy dev blue
 
 # Deploy to green environment
-./docker/scripts/deploy-blue-green.sh green dev
+./docker/scripts/deploy-blue-green-automated.sh deploy dev green
 
 # Check current status
-./docker/scripts/deploy-blue-green.sh status
+./docker/scripts/deploy-blue-green-automated.sh status
 ```
 
 ### Automated Deployment (GitHub Actions)
@@ -255,12 +255,8 @@ The deployment script can be integrated into your GitHub Actions workflow:
     ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
       cd ${{ secrets.VPS_PROJECT_PATH }}
 
-      # Determine which environment to deploy to
-      if ./docker/scripts/deploy-blue-green.sh status | grep -q "Blue environment.*ACTIVE"; then
-        ./docker/scripts/deploy-blue-green.sh green prod
-      else
-        ./docker/scripts/deploy-blue-green.sh blue prod
-      fi
+      # Auto-detect and deploy to opposite environment
+      ./docker/scripts/deploy-blue-green-automated.sh deploy prod
     EOF
 ```
 
@@ -355,13 +351,13 @@ If a deployment fails, you can quickly rollback:
 
 ```bash
 # Check current status
-./docker/scripts/deploy-blue-green.sh status
+./docker/scripts/deploy-blue-green-automated.sh status
 
 # If green is active and failing, switch back to blue
-./docker/scripts/deploy-blue-green.sh blue prod
+./docker/scripts/deploy-blue-green-automated.sh deploy prod blue
 
 # If blue is active and failing, switch to green
-./docker/scripts/deploy-blue-green.sh green prod
+./docker/scripts/deploy-blue-green-automated.sh deploy prod green
 ```
 
 ## 🔒 Security Considerations
@@ -420,7 +416,7 @@ docker stats
 sudo systemctl status nginx
 
 # Check application status
-./docker/scripts/deploy-blue-green.sh status
+./docker/scripts/deploy-blue-green-automated.sh status
 ```
 
 ## 🏷️ Docker Hub Image Tags

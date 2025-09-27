@@ -38,26 +38,32 @@ error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-# Function to create upstream configuration files
-setup_upstream_files() {
-    log "Setting up nginx upstream configuration files..."
+# Function to ensure upstream configuration files exist
+ensure_upstream_files() {
+    log "Ensuring nginx upstream configuration files exist..."
 
-    # Create upstreams directory
+    # Create upstreams directory if it doesn't exist
     sudo mkdir -p /etc/nginx/upstreams
 
-    # Create blue upstream file
-    echo "server 127.0.0.1:$BLUE_PORT;" | sudo tee $BLUE_FILE > /dev/null
-
-    # Create green upstream file
-    echo "server 127.0.0.1:$GREEN_PORT;" | sudo tee $GREEN_FILE > /dev/null
-
-    # Create initial active file (default to blue)
-    if [ ! -f "$ACTIVE_FILE" ]; then
-        echo "server 127.0.0.1:$BLUE_PORT;" | sudo tee $ACTIVE_FILE > /dev/null
-        log "Initial active upstream set to blue (port $BLUE_PORT)"
+    # Create blue upstream file if it doesn't exist
+    if [ ! -f "$BLUE_FILE" ]; then
+        echo "server 127.0.0.1:$BLUE_PORT;" | sudo tee $BLUE_FILE > /dev/null
+        log "Created blue upstream file"
     fi
 
-    success "Upstream files created successfully"
+    # Create green upstream file if it doesn't exist
+    if [ ! -f "$GREEN_FILE" ]; then
+        echo "server 127.0.0.1:$GREEN_PORT;" | sudo tee $GREEN_FILE > /dev/null
+        log "Created green upstream file"
+    fi
+
+    # Create initial active file if it doesn't exist (default to blue)
+    if [ ! -f "$ACTIVE_FILE" ]; then
+        echo "server 127.0.0.1:$BLUE_PORT;" | sudo tee $ACTIVE_FILE > /dev/null
+        log "Created initial active upstream file (defaulting to blue)"
+    fi
+
+    success "Upstream files are ready"
 }
 
 # Function to detect current active environment
@@ -127,9 +133,12 @@ cleanup_old_containers() {
 
     log "Cleaning up old $old_environment containers..."
 
+    # Use proper container naming pattern for blue-green deployment
+    local container_name="lovable-app-${old_environment}-dev"
+
     # Stop and remove old containers
-    docker stop "${APP_NAME}_${old_environment}" 2>/dev/null || log "Container ${APP_NAME}_${old_environment} not found (OK)"
-    docker rm "${APP_NAME}_${old_environment}" 2>/dev/null || log "Container ${APP_NAME}_${old_environment} not found (OK)"
+    docker stop "$container_name" 2>/dev/null || log "Container $container_name not found (OK)"
+    docker rm "$container_name" 2>/dev/null || log "Container $container_name not found (OK)"
 
     success "Old $old_environment containers cleaned up"
 }
@@ -142,17 +151,25 @@ deploy_new_container() {
 
     log "Deploying new $environment container on port $port..."
 
-    # Remove any existing container with the same name
-    docker rm -f "${APP_NAME}_${environment}" 2>/dev/null || true
+    # Use proper container naming pattern for blue-green deployment
+    local container_name="lovable-app-${environment}-dev"
 
-    # Run new container
+    # Remove any existing container with the same name
+    docker rm -f "$container_name" 2>/dev/null || true
+
+    # Run new container with proper environment file
+    local env_file=".env.dev"
+    if [ ! -f "$env_file" ]; then
+        env_file=".env.prod"
+    fi
+
     docker run -d \
-        --name "${APP_NAME}_${environment}" \
+        --name "$container_name" \
         -p "${port}:3000" \
-        --env-file .env.prod \
+        --env-file "$env_file" \
         "${APP_NAME}:${image_tag}"
 
-    success "New $environment container deployed"
+    success "New $environment container deployed as $container_name"
 }
 
 # Function to rollback on failure
@@ -175,33 +192,54 @@ rollback() {
 
 # Main deployment function
 deploy() {
-    local image_tag=${1:-"latest"}
+    local environment=${1:-"dev"}
+    local target_color=${2:-""}
+    local image_tag=${3:-"latest"}
 
     log "Starting automated blue-green deployment with image: ${APP_NAME}:${image_tag}"
+    log "Environment: $environment"
+    log "Target color: $target_color"
 
-    # Setup upstream files if they don't exist
-    setup_upstream_files
+    # Ensure upstream files exist
+    ensure_upstream_files
 
-    # Detect current active environment
-    local current_active=$(detect_current_active)
+    # Determine target environment and ports
     local new_environment
     local new_port
     local old_environment
     local old_port
 
-    if [ "$current_active" = "blue" ]; then
-        new_environment="green"
-        new_port=$GREEN_PORT
-        old_environment="blue"
-        old_port=$BLUE_PORT
+    if [ -n "$target_color" ]; then
+        # Use provided target color
+        new_environment="$target_color"
+        if [ "$target_color" = "blue" ]; then
+            new_port=$BLUE_PORT
+            old_environment="green"
+            old_port=$GREEN_PORT
+        else
+            new_port=$GREEN_PORT
+            old_environment="blue"
+            old_port=$BLUE_PORT
+        fi
+        log "Using provided target color: $target_color"
     else
-        new_environment="blue"
-        new_port=$BLUE_PORT
-        old_environment="green"
-        old_port=$GREEN_PORT
+        # Auto-detect current active environment
+        local current_active=$(detect_current_active)
+        if [ "$current_active" = "blue" ]; then
+            new_environment="green"
+            new_port=$GREEN_PORT
+            old_environment="blue"
+            old_port=$BLUE_PORT
+        else
+            new_environment="blue"
+            new_port=$BLUE_PORT
+            old_environment="green"
+            old_port=$GREEN_PORT
+        fi
+        log "Auto-detected: Current active: $current_active, Deploying new: $new_environment"
     fi
 
-    log "Current active: $current_active, Deploying new: $new_environment on port $new_port"
+    log "Deploying to: $new_environment on port $new_port"
 
     # Deploy new container
     deploy_new_container "$new_environment" "$new_port" "$image_tag"
@@ -257,31 +295,38 @@ show_status() {
 show_help() {
     echo "Automated Blue-Green Deployment Script"
     echo ""
-    echo "Usage: $0 [COMMAND] [OPTIONS]"
+    echo "Usage: $0 [COMMAND] [ENVIRONMENT] [TARGET_COLOR] [IMAGE_TAG]"
     echo ""
     echo "Commands:"
-    echo "  deploy [IMAGE_TAG]  Deploy new version (default: latest)"
-    echo "  status             Show current deployment status"
-    echo "  setup              Setup nginx upstream files"
-    echo "  help               Show this help message"
+    echo "  deploy [ENV] [COLOR] [TAG]  Deploy new version"
+    echo "  status                      Show current deployment status"
+    echo "  setup                       Ensure nginx upstream files exist"
+    echo "  help                        Show this help message"
+    echo ""
+    echo "Parameters:"
+    echo "  ENV      Environment (dev/prod, default: dev)"
+    echo "  COLOR    Target color (blue/green, default: auto-detect)"
+    echo "  TAG      Docker image tag (default: latest)"
     echo ""
     echo "Examples:"
-    echo "  $0 deploy                    # Deploy latest image"
-    echo "  $0 deploy v1.2.3            # Deploy specific version"
-    echo "  $0 status                   # Show current status"
-    echo "  $0 setup                    # Setup nginx files"
+    echo "  $0 deploy                    # Deploy latest image (auto-detect color)"
+    echo "  $0 deploy dev                # Deploy to dev environment"
+    echo "  $0 deploy dev green          # Deploy to green dev environment"
+    echo "  $0 deploy dev blue latest    # Deploy latest to blue dev environment"
+    echo "  $0 status                    # Show current status"
+    echo "  $0 setup                     # Ensure nginx files exist"
 }
 
 # Main script logic
 case "${1:-deploy}" in
     "deploy")
-        deploy "$2"
+        deploy "$2" "$3" "$4"
         ;;
     "status")
         show_status
         ;;
     "setup")
-        setup_upstream_files
+        ensure_upstream_files
         ;;
     "help"|"-h"|"--help")
         show_help
