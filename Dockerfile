@@ -24,9 +24,13 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
 COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+
 RUN npm ci --omit=dev
 
-COPY --from=builder /app ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 
