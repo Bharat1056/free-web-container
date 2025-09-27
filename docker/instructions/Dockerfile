@@ -14,7 +14,14 @@ RUN npm ci
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY src ./src/
+COPY public ./public/
+COPY next.config.ts ./
+COPY tsconfig.json ./
+COPY components.json ./
+COPY postcss.config.mjs ./
+COPY eslint.config.mjs ./
+COPY next-env.d.ts ./
 
 # Generate Prisma client
 RUN npx prisma generate
