@@ -68,7 +68,7 @@ jobs:
             git pull origin main
 
             # Stop existing containers
-            docker-compose -f docker-compose.prod.yml down
+            docker-compose -f docker/instructions/docker-compose.app.yml down
 
             # Remove old images to free up space
             docker system prune -f
@@ -116,7 +116,7 @@ jobs:
           ENVEOF
 
             # Start containers (no build needed, using pre-built image)
-            docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
+            docker-compose -f docker/instructions/docker-compose.app.yml --env-file .env.prod up -d
 
             # Wait for services to be ready
             echo "Waiting for services to start..."
@@ -126,7 +126,7 @@ jobs:
             echo "Checking service health..."
 
             # Check if MySQL is ready
-            if docker-compose -f docker-compose.prod.yml exec -T mysql mysqladmin ping -h localhost --silent; then
+            if docker-compose -f docker/instructions/docker-compose.app.yml exec -T mysql mysqladmin ping -h localhost --silent; then
               echo "✅ MySQL is ready"
             else
               echo "❌ MySQL is not ready"

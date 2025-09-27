@@ -140,7 +140,7 @@ jobs:
 
             # Stop existing dev containers (now with env file available)
             echo "🛑 Stopping existing dev containers..."
-            docker compose -f docker-compose.dev.yml --env-file .env.dev down
+            docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev down
 
             # Remove old dev images to free up space
             echo "🧹 Cleaning up old Docker images..."
@@ -152,7 +152,7 @@ jobs:
 
             # Start dev containers (no build needed, using pre-built image)
             echo "🚀 Starting dev containers..."
-            docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
+            docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev up -d
 
             # Wait for services to be ready
             echo "⏳ Waiting for dev services to start..."
@@ -163,13 +163,13 @@ jobs:
 
             # Check if MySQL is ready
             echo "🗄️  Checking MySQL connection..."
-            if docker compose -f docker-compose.dev.yml --env-file .env.dev exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
+            if docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
               echo "✅ MySQL (dev) is ready"
             else
               echo "❌ MySQL (dev) is not ready"
               # Show MySQL logs for debugging
               echo "📋 MySQL logs:"
-              docker compose -f docker-compose.dev.yml --env-file .env.dev logs mysql --tail=20
+              docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev logs mysql --tail=20
               exit 1
             fi
 
@@ -182,7 +182,7 @@ jobs:
             else
               echo "⏳ Next.js app (dev) is still starting (this is normal for dev mode)"
               echo "📋 App logs:"
-              docker compose -f docker-compose.dev.yml --env-file .env.dev logs app --tail=10
+              docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev logs app --tail=10
             fi
 
             # Check if Inngest is ready
@@ -192,13 +192,13 @@ jobs:
             else
               echo "❌ Inngest (dev) is not ready"
               echo "📋 Inngest logs:"
-              docker compose -f docker-compose.dev.yml --env-file .env.dev logs inngest --tail=20
+              docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev logs inngest --tail=20
               exit 1
             fi
 
             # Show running containers for verification
             echo "🐳 Running containers:"
-            docker compose -f docker-compose.dev.yml --env-file .env.dev ps
+            docker compose -f docker/instructions/docker-compose.dev.yml --env-file .env.dev ps
 
             echo ""
             echo "🎉 Dev deployment completed successfully!"
