@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # MySQL Database
   mysql:
@@ -12,17 +14,19 @@ services:
     ports:
       - "${MYSQL_PORT}:3306"
     volumes:
-      - mysql_data_dev:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     networks:
-      - lovable-network-dev
+      - lovable-network
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
       retries: 10
+      interval: 30s
+      start_period: 40s
 
   # Next.js Application
   app:
-    image: ${DOCKERHUB_USERNAME}/lovable-dev:dev
+    image: ${DOCKERHUB_USERNAME}/lovable:${DEPLOYMENT_VERSION}
     container_name: ${APP_CONTAINER_NAME}
     restart: unless-stopped
     environment:
@@ -48,34 +52,41 @@ services:
       - NEXT_PUBLIC_CLERK_SIGN_UP_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
     ports:
       - "${APP_PORT}:3000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
     depends_on:
       mysql:
         condition: service_healthy
     networks:
-      - lovable-network-dev
-    command: npm run dev
+      - lovable-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 60s
 
-  # Inngest Dev Server
+  # Inngest
   inngest:
     image: inngest/inngest:latest
     container_name: ${INNGEST_CONTAINER_NAME}
     restart: unless-stopped
-    command: "inngest dev -u http://app:3000/api/inngest"
+    command: "inngest serve -u http://app:3000/api/inngest"
     ports:
       - "${INNGEST_PORT}:8288"
     networks:
-      - lovable-network-dev
+      - lovable-network
     depends_on:
       - mysql
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8288/health"]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 30s
 
 volumes:
-  mysql_data_dev:
+  mysql_data:
     driver: local
 
 networks:
-  lovable-network-dev:
+  lovable-network:
     driver: bridge
