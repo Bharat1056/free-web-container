@@ -64,13 +64,31 @@ jobs:
             # Navigate to project directory
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
-            # Pull latest changes from dev branch
-            git fetch origin
-            git checkout dev
-            git pull origin dev
+            # Clone repository if it doesn't exist, otherwise pull latest changes
+            if [ -d ".git" ]; then
+              echo "📁 Repository exists, pulling latest changes..."
+              git fetch origin
+              git checkout dev
+              git pull origin dev
+            else
+              echo "📁 Repository not found, cloning from GitHub..."
+              # Go up one directory to clone
+              cd ..
+              # Remove empty directory if it exists
+              rm -rf $(basename ${{ secrets.VPS_PROJECT_PATH }})
+              # Clone the repository
+              git clone https://github.com/${{ github.repository }}.git $(basename ${{ secrets.VPS_PROJECT_PATH }})
+              # Navigate back to project directory
+              cd $(basename ${{ secrets.VPS_PROJECT_PATH }})
+              # Checkout dev branch
+              git checkout dev
+            fi
+
+            # Login to Docker Hub
+            echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
             # Stop existing dev containers
-            docker-compose -f docker-compose.dev.yml down
+            docker compose -f docker-compose.dev.yml down
 
             # Remove old dev images to free up space
             docker system prune -f
@@ -118,7 +136,7 @@ jobs:
           ENVEOF
 
             # Start dev containers (no build needed, using pre-built image)
-            docker-compose -f docker-compose.dev.yml --env-file .env.dev up -d
+            docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
 
             # Wait for services to be ready
             echo "Waiting for dev services to start..."
@@ -128,7 +146,7 @@ jobs:
             echo "Checking dev service health..."
 
             # Check if MySQL is ready
-            if docker-compose -f docker-compose.dev.yml exec -T mysql mysqladmin ping -h localhost --silent; then
+            if docker compose -f docker-compose.dev.yml exec -T mysql mysqladmin ping -h localhost --silent; then
               echo "✅ MySQL (dev) is ready"
             else
               echo "❌ MySQL (dev) is not ready"
