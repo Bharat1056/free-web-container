@@ -89,42 +89,49 @@ jobs:
 
             # Create .env.dev file with secrets FIRST
             cat > .env.dev << 'ENVEOF'
-          NODE_ENV=development
+NODE_ENV=development
 
-          # Database Configuration
-          MYSQL_CONTAINER_NAME=lovable-mysql-dev
-          MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
-          MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
-          MYSQL_USER=${{ secrets.MYSQL_USER }}
-          MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
-          MYSQL_PORT=3307
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
+# Database Configuration
+MYSQL_CONTAINER_NAME=lovable-mysql-dev
+MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
+MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
+MYSQL_USER=${{ secrets.MYSQL_USER }}
+MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
+MYSQL_PORT=3307
+DATABASE_URL=${{ secrets.DATABASE_URL }}
 
-          # Application Configuration
-          APP_CONTAINER_NAME=lovable-app-dev
-          APP_PORT=3001
+# Application Configuration
+APP_CONTAINER_NAME=lovable-app-dev
+APP_PORT=3001
 
-          # Inngest Configuration
-          INNGEST_CONTAINER_NAME=lovable-inngest-dev
-          INNGEST_PORT=8289
-          INNGEST_DEV=true
-          INNGEST_BASE_URL=http://localhost:3001/api/inngest
-          INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
-          INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
+# Inngest Configuration
+INNGEST_CONTAINER_NAME=lovable-inngest-dev
+INNGEST_PORT=8289
+INNGEST_DEV=true
+INNGEST_BASE_URL=http://localhost:3001/api/inngest
+INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
+INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
 
-          # API Keys
-          GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-          E2B_API_KEY=${{ secrets.E2B_API_KEY }}
+# API Keys
+GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+E2B_API_KEY=${{ secrets.E2B_API_KEY }}
 
-          # Clerk Authentication
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+# Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
 
-          # Docker Hub Configuration
-          DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-          ENVEOF
+# Docker Hub Configuration
+DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+ENVEOF
+
+            # Debug: Show the .env.dev file contents (without sensitive data)
+            echo "📄 Created .env.dev file. Checking contents..."
+            echo "File exists: $(ls -la .env.dev)"
+            echo "File size: $(wc -l .env.dev)"
+            echo "First few lines (non-sensitive):"
+            head -5 .env.dev | grep -E "^(NODE_ENV|MYSQL_CONTAINER_NAME|APP_CONTAINER_NAME|INNGEST_CONTAINER_NAME|APP_PORT|MYSQL_PORT|INNGEST_PORT|INNGEST_DEV|INNGEST_BASE_URL)=" || echo "No non-sensitive variables found"
 
             # Stop existing dev containers (now with env file available)
             docker compose -f docker-compose.dev.yml --env-file .env.dev down
