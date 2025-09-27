@@ -1,5 +1,4 @@
 version: "3.9"
-
 services:
   mysql:
     image: mysql:8.0
@@ -11,13 +10,26 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
-      - "${MYSQL_PORT}:3306"
+      - target: 3306
+        published: ${MYSQL_PORT}
+        protocol: tcp
+        mode: host
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
       - lovable-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8288/health || exit 1"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD}",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -46,7 +58,10 @@ services:
       NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL}
       NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
     ports:
-      - "${APP_PORT}:3000"
+      - target: 3000
+        published: ${APP_PORT}
+        protocol: tcp
+        mode: host
     depends_on:
       mysql:
         condition: service_healthy
@@ -66,11 +81,15 @@ services:
     restart: unless-stopped
     command: "inngest dev -u http://app:3000/api/inngest"
     ports:
-      - "${INNGEST_PORT}:8288"
+      - target: 8288
+        published: ${INNGEST_PORT}
+        protocol: tcp
+        mode: host
     networks:
       - lovable-network
     depends_on:
-      - mysql
+      app:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8288/health"]
       timeout: 10s
