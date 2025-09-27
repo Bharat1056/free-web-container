@@ -87,16 +87,7 @@ jobs:
             # Login to Docker Hub
             echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
-            # Stop existing dev containers
-            docker compose -f docker-compose.dev.yml down
-
-            # Remove old dev images to free up space
-            docker system prune -f
-
-            # Pull latest dev image from Docker Hub
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev:dev
-
-            # Create .env.dev file with secrets
+            # Create .env.dev file with secrets FIRST
             cat > .env.dev << 'ENVEOF'
           NODE_ENV=development
 
@@ -134,6 +125,15 @@ jobs:
           # Docker Hub Configuration
           DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
           ENVEOF
+
+            # Stop existing dev containers (now with env file available)
+            docker compose -f docker-compose.dev.yml --env-file .env.dev down
+
+            # Remove old dev images to free up space
+            docker system prune -f
+
+            # Pull latest dev image from Docker Hub
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev:dev
 
             # Start dev containers (no build needed, using pre-built image)
             docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
