@@ -36,7 +36,7 @@ export async function validatePrompt(
     });
 
     return result as ValidationResult;
-  } catch (error) {
+  } catch {
     return {
       isValid: false,
     };

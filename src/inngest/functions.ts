@@ -396,7 +396,7 @@ export const codeAgentFunction = inngest.createFunction(
           { state }
         );
         fragmentTitleOutput = fragmentResult.output;
-      } catch (error) {
+      } catch {
         // If fragment title generator shows error, use random slug like in project creation
         fragmentTitleOutput = generateSlug(2, {
           format: "title",
@@ -411,7 +411,7 @@ export const codeAgentFunction = inngest.createFunction(
           { state }
         );
         responseOutput = responseResult.output;
-      } catch (error) {
+      } catch {
         // If response generator throws error after retry, return success message
         responseOutput =
           "Great! Your query is ready. The code has been prepared and is ready to use.";
