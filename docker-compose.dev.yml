@@ -24,7 +24,7 @@ services:
 
   # Next.js Application (Development)
   app:
-    image: ${DOCKERHUB_USERNAME}/lovable-dev:dev
+    image: ${DOCKERHUB_USERNAME}/lovable:latest
     container_name: ${APP_CONTAINER_NAME}
     restart: unless-stopped
     environment:
@@ -50,10 +50,6 @@ services:
       - NEXT_PUBLIC_CLERK_SIGN_UP_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
     ports:
       - "${APP_PORT}:3000"
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
     depends_on:
       mysql:
         condition: service_healthy

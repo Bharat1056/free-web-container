@@ -29,9 +29,9 @@ jobs:
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev
           tags: |
+            type=sha
             type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=dev,enable={{is_default_branch}}
+            type=raw,value=lates
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -64,10 +64,8 @@ jobs:
             # Set proper permissions and create directories
             sudo chown -R $USER:$USER ${{ secrets.VPS_PROJECT_PATH }} 2>/dev/null || true
 
-            # Navigate to project directory
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
-            # Clone repository if it doesn't exist, otherwise pull latest changes
             if [ -d ".git" ]; then
               echo "📁 Repository exists, pulling latest changes..."
               git fetch origin
@@ -75,39 +73,24 @@ jobs:
               git pull origin dev
             else
               echo "📁 Repository not found, cloning from GitHub..."
-              # Go up one directory to clone
               cd ..
-              # Remove directory with proper permissions
-              sudo rm -rf $(basename ${{ secrets.VPS_PROJECT_PATH }}) 2>/dev/null || rm -rf $(basename ${{ secrets.VPS_PROJECT_PATH }})
-              # Clone the repository
+              rm -rf $(basename ${{ secrets.VPS_PROJECT_PATH }})
               git clone https://github.com/${{ github.repository }}.git $(basename ${{ secrets.VPS_PROJECT_PATH }})
-              # Set proper ownership
-              sudo chown -R $USER:$USER $(basename ${{ secrets.VPS_PROJECT_PATH }})
-              # Navigate back to project directory
               cd $(basename ${{ secrets.VPS_PROJECT_PATH }})
-              # Checkout dev branch
               git checkout dev
             fi
 
-            # Login to Docker Hub
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Detect current active environment (blue/green)
             echo "🔍 Detecting current active environment..."
-            CURRENT_ACTIVE="blue"  # Default to blue for first deployment
+            CURRENT_ACTIVE="blue"
 
-            # Check which port is currently active by looking at running containers
             if docker ps --format "{{.Names}}" | grep -q "lovable-app-blue-dev"; then
               CURRENT_ACTIVE="blue"
-              echo "🔵 Current active environment: BLUE"
             elif docker ps --format "{{.Names}}" | grep -q "lovable-app-green-dev"; then
               CURRENT_ACTIVE="green"
-              echo "🟢 Current active environment: GREEN"
-            else
-              echo "⚪ No active environment detected, defaulting to BLUE"
             fi
 
-            # Determine target environment (opposite of current active)
             if [ "$CURRENT_ACTIVE" = "blue" ]; then
               TARGET_COLOR="green"
               TARGET_PORT="3001"
@@ -118,18 +101,10 @@ jobs:
               echo "🎯 Deploying to: BLUE environment (port $TARGET_PORT)"
             fi
 
-            # Create .env.dev file with secrets and blue-green configuration
             sudo touch .env.dev
             sudo chown $USER:$USER .env.dev
             cat > .env.dev << ENV_EOF
           NODE_ENV=development
-
-          # Blue-Green Deployment Configuration
-          CURRENT_ACTIVE=$CURRENT_ACTIVE
-          TARGET_COLOR=$TARGET_COLOR
-          TARGET_PORT=$TARGET_PORT
-
-          # Database Configuration
           MYSQL_CONTAINER_NAME=lovable-mysql-$TARGET_COLOR-dev
           MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
           MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
@@ -137,63 +112,42 @@ jobs:
           MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
           MYSQL_PORT=3307
           DATABASE_URL=${{ secrets.DATABASE_URL }}
-
-          # Application Configuration
           APP_CONTAINER_NAME=lovable-app-$TARGET_COLOR-dev
           APP_PORT=$TARGET_PORT
-
-          # Inngest Configuration
           INNGEST_CONTAINER_NAME=lovable-inngest-$TARGET_COLOR-dev
           INNGEST_PORT=8289
           INNGEST_DEV=true
           INNGEST_BASE_URL=http://localhost:$TARGET_PORT/api/inngest
           INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
           INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
-
-          # API Keys
           GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           E2B_API_KEY=${{ secrets.E2B_API_KEY }}
-
-          # Clerk Authentication
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
           NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
           NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/dashboard
           NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/dashboard
           NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-
-          # Docker Hub Configuration
           DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-
-          # Deployment Configuration
-          DEPLOYMENT_VERSION=${{ github.sha }}
           ENV_EOF
 
-            # Debug: Show the .env.dev file contents (without sensitive data)
-            echo "📄 Created .env.dev file. Checking contents..."
             if [ -f .env.dev ]; then
-              head -5 .env.dev | grep -E "^(NODE_ENV|MYSQL_CONTAINER_NAME|APP_CONTAINER_NAME|INNGEST_CONTAINER_NAME|APP_PORT|MYSQL_PORT|INNGEST_PORT|INNGEST_DEV|INNGEST_BASE_URL)=" || echo "ℹ️  No non-sensitive variables found in first 5 lines"
+              head -5 .env.dev || echo "ℹ️  .env.dev created but no preview available"
             else
               echo "❌ .env.dev file was not created!"
               exit 1
             fi
 
-            # Pull latest dev image from Docker Hub
-            echo "📥 Pulling latest dev image from Docker Hub..."
-            docker pull "${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev:dev"
+            echo "📥 Pulling commit-specific dev image..."
+            docker pull "${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev:${{ github.sha }}"
 
-            # Make deployment script executable
             chmod +x docker/scripts/deploy-blue-green-automated.sh
-
-            # Run automated blue-green deployment for development
-            ./docker/scripts/deploy-blue-green-automated.sh deploy dev $TARGET_COLOR
+            ./docker/scripts/deploy-blue-green-automated.sh deploy dev $TARGET_COLOR ${{ github.sha }}
 
             echo ""
-            echo "🎉 Dev blue-green deployment completed successfully!"
             echo "📱 Development App: http://${{ secrets.VPS_HOST }}:8080"
-            echo "🔧 Production App: http://${{ secrets.VPS_HOST }}"
             echo ""
             echo "📋 Dev environment is running with zero-downtime deployment!"
           DEPLOY_EOF
