@@ -124,6 +124,36 @@ log_all_containers() {
     log "=== END CONTAINER STATUS: $phase ==="
 }
 
+# Function to cleanup containers by name pattern
+cleanup_containers_by_pattern() {
+    local pattern=$1
+    local force=${2:-false}
+
+    log "Cleaning up containers matching pattern: $pattern"
+
+    # Find containers matching the pattern
+    local containers=$(docker ps -a --format "{{.Names}}" | grep -E "$pattern" || true)
+
+    if [ -n "$containers" ]; then
+        log "Found containers to cleanup: $containers"
+
+        for container in $containers; do
+            log "Stopping and removing container: $container"
+            if [ "$force" = "true" ]; then
+                docker stop "$container" 2>/dev/null || true
+                docker rm -f "$container" 2>/dev/null || true
+            else
+                docker stop "$container" 2>/dev/null || true
+                docker rm "$container" 2>/dev/null || true
+            fi
+        done
+
+        success "Containers matching pattern '$pattern' cleaned up"
+    else
+        log "No containers found matching pattern: $pattern"
+    fi
+}
+
 # Function to cleanup old containers
 cleanup_old_containers() {
     local old_port=$1
@@ -141,6 +171,29 @@ cleanup_old_containers() {
     else
         log "No old containers found on port $old_port"
     fi
+}
+
+# Function to resolve container name conflicts for specific color
+resolve_container_conflicts() {
+    local target_color=$1
+    local environment=$2
+
+    log "Resolving container name conflicts for $target_color-$environment..."
+
+    # Only clean up containers for the SPECIFIC color we're deploying to
+    # This preserves the other color's containers (blue-green principle)
+    local mysql_name="lovable-mysql-$target_color-$environment"
+    local app_name="lovable-app-$target_color-$environment"
+    local inngest_name="lovable-inngest-$target_color-$environment"
+
+    log "Cleaning up containers for $target_color environment: $mysql_name, $app_name, $inngest_name"
+
+    # Force remove only the containers we're about to recreate
+    docker rm -f "$mysql_name" 2>/dev/null || log "Container $mysql_name not found (OK)"
+    docker rm -f "$app_name" 2>/dev/null || log "Container $app_name not found (OK)"
+    docker rm -f "$inngest_name" 2>/dev/null || log "Container $inngest_name not found (OK)"
+
+    success "Container name conflicts resolved for $target_color environment"
 }
 
 # Main deployment function
@@ -204,6 +257,9 @@ deploy() {
         warning "Environment file .env.$environment not found, using defaults"
     fi
 
+    # Resolve any container name conflicts before deployment
+    resolve_container_conflicts $target_color $environment
+
     # Log initial state
     log_all_containers "BEFORE DEPLOYMENT"
 
@@ -247,6 +303,59 @@ deploy() {
     # Show running containers
     log "Running containers:"
     docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+}
+
+# Function to show which environment is currently active
+show_active_environment() {
+    log "=== ACTIVE ENVIRONMENT STATUS ==="
+
+    # Check which ports are active
+    local blue_active=false
+    local green_active=false
+
+    if check_port 3000; then
+        blue_active=true
+        log "🔵 BLUE environment (port 3000): ACTIVE"
+    else
+        log "⚪ BLUE environment (port 3000): INACTIVE"
+    fi
+
+    if check_port 3001; then
+        green_active=true
+        log "🟢 GREEN environment (port 3001): ACTIVE"
+    else
+        log "⚪ GREEN environment (port 3001): INACTIVE"
+    fi
+
+    # Show which containers are running
+    log ""
+    log "Running containers:"
+    local containers=$(docker ps --format "{{.Names}}" | grep -E "(lovable-.*-blue|lovable-.*-green)" || true)
+
+    if [ -n "$containers" ]; then
+        for container in $containers; do
+            if [[ "$container" == *"-blue-"* ]]; then
+                log "🔵 $container"
+            elif [[ "$container" == *"-green-"* ]]; then
+                log "🟢 $container"
+            else
+                log "⚪ $container"
+            fi
+        done
+    else
+        log "No blue/green containers found"
+    fi
+
+    # Show nginx configuration
+    log ""
+    log "Nginx upstream configuration:"
+    if [ -f "$NGINX_CONFIG" ]; then
+        grep -A 5 "upstream lovable_backend" "$NGINX_CONFIG" | grep "server" || log "No upstream servers found"
+    else
+        log "Nginx config file not found at $NGINX_CONFIG"
+    fi
+
+    log "=== END ACTIVE ENVIRONMENT STATUS ==="
 }
 
 # Function to show detailed container information
@@ -315,15 +424,38 @@ main() {
         "logs")
             log_all_containers "MANUAL LOG CHECK"
             ;;
+        "cleanup")
+            local environment=${2:-dev}
+            local color=${3:-}
+            if [ -n "$color" ]; then
+                log "Cleaning up $color containers for environment: $environment"
+                cleanup_containers_by_pattern "lovable-.*-$color-$environment" true
+            else
+                log "Cleaning up ALL containers for environment: $environment"
+                cleanup_containers_by_pattern "lovable-.*-$environment" true
+            fi
+            ;;
+        "active")
+            show_active_environment
+            ;;
         "help"|"-h"|"--help")
-            echo "Usage: $0 [blue|green|status|logs] [dev|prod]"
+            echo "Usage: $0 [blue|green|status|logs|cleanup|active] [dev|prod] [blue|green]"
             echo ""
             echo "Commands:"
             echo "  blue     Deploy to blue environment (port 3000)"
             echo "  green    Deploy to green environment (port 3001)"
             echo "  status   Show current deployment status"
             echo "  logs     Show detailed logs for all containers"
+            echo "  active   Show which environment is currently active"
+            echo "  cleanup  Clean up containers (all or specific color)"
             echo "  help     Show this help message"
+            echo ""
+            echo "Examples:"
+            echo "  $0 blue dev          # Deploy to blue dev environment"
+            echo "  $0 green prod        # Deploy to green prod environment"
+            echo "  $0 active            # Show active environment"
+            echo "  $0 cleanup dev       # Clean up all dev containers"
+            echo "  $0 cleanup dev blue  # Clean up only blue dev containers"
             echo ""
             echo "Environments:"
             echo "  dev      Development environment"
