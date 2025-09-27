@@ -60,7 +60,7 @@ jobs:
 
       - name: Deploy Dev to VPS
         run: |
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'DEPLOY_EOF'
             # Navigate to project directory
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
@@ -85,105 +85,129 @@ jobs:
             fi
 
             # Login to Docker Hub
-            echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Create .env.dev file with secrets FIRST
-            cat > .env.dev << 'ENVEOF'
-NODE_ENV=development
+            # Create .env.dev file with secrets
+            cat > .env.dev << 'ENV_EOF'
+          NODE_ENV=development
 
-# Database Configuration
-MYSQL_CONTAINER_NAME=lovable-mysql-dev
-MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
-MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
-MYSQL_USER=${{ secrets.MYSQL_USER }}
-MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
-MYSQL_PORT=3307
-DATABASE_URL=${{ secrets.DATABASE_URL }}
+          # Database Configuration
+          MYSQL_CONTAINER_NAME=lovable-mysql-dev
+          MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER=${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_PORT=3307
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
 
-# Application Configuration
-APP_CONTAINER_NAME=lovable-app-dev
-APP_PORT=3001
+          # Application Configuration
+          APP_CONTAINER_NAME=lovable-app-dev
+          APP_PORT=3001
 
-# Inngest Configuration
-INNGEST_CONTAINER_NAME=lovable-inngest-dev
-INNGEST_PORT=8289
-INNGEST_DEV=true
-INNGEST_BASE_URL=http://localhost:3001/api/inngest
-INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
-INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
+          # Inngest Configuration
+          INNGEST_CONTAINER_NAME=lovable-inngest-dev
+          INNGEST_PORT=8289
+          INNGEST_DEV=true
+          INNGEST_BASE_URL=http://localhost:3001/api/inngest
+          INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
+          INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
 
-# API Keys
-GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
-GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
-E2B_API_KEY=${{ secrets.E2B_API_KEY }}
+          # API Keys
+          GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          E2B_API_KEY=${{ secrets.E2B_API_KEY }}
 
-# Clerk Authentication
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+          # Clerk Authentication
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
 
-# Docker Hub Configuration
-DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-ENVEOF
+          # Docker Hub Configuration
+          DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+          ENV_EOF
 
             # Debug: Show the .env.dev file contents (without sensitive data)
             echo "📄 Created .env.dev file. Checking contents..."
-            echo "File exists: $(ls -la .env.dev)"
-            echo "File size: $(wc -l .env.dev)"
-            echo "First few lines (non-sensitive):"
-            head -5 .env.dev | grep -E "^(NODE_ENV|MYSQL_CONTAINER_NAME|APP_CONTAINER_NAME|INNGEST_CONTAINER_NAME|APP_PORT|MYSQL_PORT|INNGEST_PORT|INNGEST_DEV|INNGEST_BASE_URL)=" || echo "No non-sensitive variables found"
+            if [ -f .env.dev ]; then
+              echo "✅ File exists: $(ls -la .env.dev)"
+              echo "📊 File size: $(wc -l < .env.dev) lines"
+              echo "🔍 First few lines (non-sensitive):"
+              head -5 .env.dev | grep -E "^(NODE_ENV|MYSQL_CONTAINER_NAME|APP_CONTAINER_NAME|INNGEST_CONTAINER_NAME|APP_PORT|MYSQL_PORT|INNGEST_PORT|INNGEST_DEV|INNGEST_BASE_URL)=" || echo "ℹ️  No non-sensitive variables found in first 5 lines"
+            else
+              echo "❌ .env.dev file was not created!"
+              exit 1
+            fi
 
             # Stop existing dev containers (now with env file available)
+            echo "🛑 Stopping existing dev containers..."
             docker compose -f docker-compose.dev.yml --env-file .env.dev down
 
             # Remove old dev images to free up space
+            echo "🧹 Cleaning up old Docker images..."
             docker system prune -f
 
             # Pull latest dev image from Docker Hub
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev:dev
+            echo "📥 Pulling latest dev image from Docker Hub..."
+            docker pull "${{ secrets.DOCKERHUB_USERNAME }}/lovable-dev:dev"
 
             # Start dev containers (no build needed, using pre-built image)
+            echo "🚀 Starting dev containers..."
             docker compose -f docker-compose.dev.yml --env-file .env.dev up -d
 
             # Wait for services to be ready
-            echo "Waiting for dev services to start..."
+            echo "⏳ Waiting for dev services to start..."
             sleep 30
 
             # Check service health
-            echo "Checking dev service health..."
+            echo "🔍 Checking dev service health..."
 
             # Check if MySQL is ready
-            if docker compose -f docker-compose.dev.yml exec -T mysql mysqladmin ping -h localhost --silent; then
+            echo "🗄️  Checking MySQL connection..."
+            if docker compose -f docker-compose.dev.yml --env-file .env.dev exec -T mysql mysqladmin ping -h localhost --silent 2>/dev/null; then
               echo "✅ MySQL (dev) is ready"
             else
               echo "❌ MySQL (dev) is not ready"
+              # Show MySQL logs for debugging
+              echo "📋 MySQL logs:"
+              docker compose -f docker-compose.dev.yml --env-file .env.dev logs mysql --tail=20
               exit 1
             fi
 
             # Check if Next.js app is ready (dev server takes longer to start)
-            echo "Waiting for Next.js dev server to start..."
+            echo "⚛️  Checking Next.js app..."
+            echo "⏳ Waiting for Next.js dev server to start..."
             sleep 20
             if curl -f http://localhost:3001 > /dev/null 2>&1; then
               echo "✅ Next.js app (dev) is ready"
             else
               echo "⏳ Next.js app (dev) is still starting (this is normal for dev mode)"
+              echo "📋 App logs:"
+              docker compose -f docker-compose.dev.yml --env-file .env.dev logs app --tail=10
             fi
 
             # Check if Inngest is ready
+            echo "⚡ Checking Inngest service..."
             if curl -f http://localhost:8289 > /dev/null 2>&1; then
               echo "✅ Inngest (dev) is ready"
             else
               echo "❌ Inngest (dev) is not ready"
+              echo "📋 Inngest logs:"
+              docker compose -f docker-compose.dev.yml --env-file .env.dev logs inngest --tail=20
               exit 1
             fi
 
+            # Show running containers for verification
+            echo "🐳 Running containers:"
+            docker compose -f docker-compose.dev.yml --env-file .env.dev ps
+
+            echo ""
             echo "🎉 Dev deployment completed successfully!"
             echo "📱 Next.js App (Dev): http://${{ secrets.VPS_HOST }}:3001"
             echo "⚡ Inngest (Dev): http://${{ secrets.VPS_HOST }}:8289"
             echo "🗄️  MySQL (Dev): ${{ secrets.VPS_HOST }}:3307"
             echo ""
             echo "📋 Dev environment is running with hot reload enabled!"
-          EOF
+          DEPLOY_EOF
 
       - name: Notify dev deployment status
         if: always()
@@ -192,4 +216,5 @@ ENVEOF
             echo "✅ Dev deployment to VPS completed successfully!"
           else
             echo "❌ Dev deployment to VPS failed!"
+            exit 1
           fi
