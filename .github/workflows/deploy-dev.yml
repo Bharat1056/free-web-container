@@ -61,6 +61,9 @@ jobs:
       - name: Deploy Dev to VPS
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'DEPLOY_EOF'
+            # Set proper permissions and create directories
+            sudo chown -R $USER:$USER ${{ secrets.VPS_PROJECT_PATH }} 2>/dev/null || true
+
             # Navigate to project directory
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
@@ -74,10 +77,12 @@ jobs:
               echo "📁 Repository not found, cloning from GitHub..."
               # Go up one directory to clone
               cd ..
-              # Remove empty directory if it exists
-              rm -rf $(basename ${{ secrets.VPS_PROJECT_PATH }})
+              # Remove directory with proper permissions
+              sudo rm -rf $(basename ${{ secrets.VPS_PROJECT_PATH }}) 2>/dev/null || rm -rf $(basename ${{ secrets.VPS_PROJECT_PATH }})
               # Clone the repository
               git clone https://github.com/${{ github.repository }}.git $(basename ${{ secrets.VPS_PROJECT_PATH }})
+              # Set proper ownership
+              sudo chown -R $USER:$USER $(basename ${{ secrets.VPS_PROJECT_PATH }})
               # Navigate back to project directory
               cd $(basename ${{ secrets.VPS_PROJECT_PATH }})
               # Checkout dev branch
@@ -88,6 +93,8 @@ jobs:
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             # Create .env.dev file with secrets
+            sudo touch .env.dev
+            sudo chown $USER:$USER .env.dev
             cat > .env.dev << 'ENV_EOF'
           NODE_ENV=development
 

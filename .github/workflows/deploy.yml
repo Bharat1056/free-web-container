@@ -61,6 +61,9 @@ jobs:
       - name: Deploy to VPS using Blue-Green
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+            # Set proper permissions
+            sudo chown -R $USER:$USER ${{ secrets.VPS_PROJECT_PATH }} 2>/dev/null || true
+
             # Navigate to project directory
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
@@ -71,6 +74,8 @@ jobs:
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/lovable:latest
 
             # Create .env.prod file with secrets
+            sudo touch .env.prod
+            sudo chown $USER:$USER .env.prod
             cat > .env.prod << 'ENVEOF'
           NODE_ENV=production
 
