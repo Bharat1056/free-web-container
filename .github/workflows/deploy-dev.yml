@@ -124,6 +124,9 @@ jobs:
 
           # Docker Hub Configuration
           DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+
+          # Deployment Configuration
+          DEPLOYMENT_VERSION=${{ github.sha }}
           ENV_EOF
 
             # Debug: Show the .env.dev file contents (without sensitive data)

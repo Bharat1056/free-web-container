@@ -113,6 +113,9 @@ jobs:
 
           # Docker Hub Configuration
           DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+          
+          # Deployment Configuration
+          DEPLOYMENT_VERSION=${{ github.sha }}
           ENVEOF
 
             # Start containers (no build needed, using pre-built image)
