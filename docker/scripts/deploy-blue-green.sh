@@ -98,6 +98,32 @@ switch_nginx_traffic() {
     fi
 }
 
+# Function to log all containers during transition
+log_all_containers() {
+    local phase=$1
+
+    log "=== CONTAINER STATUS: $phase ==="
+
+    # Get all running containers
+    local all_containers=$(docker ps --format "{{.Names}}" | grep -E "(lovable|mysql|inngest)" || true)
+
+    if [ -n "$all_containers" ]; then
+        log "Total containers running: $(echo "$all_containers" | wc -l)"
+        log "Container details:"
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.Image}}" | grep -E "(lovable|mysql|inngest|NAMES)" || true
+
+        # Log each container's logs (last 10 lines)
+        for container in $all_containers; do
+            log "--- Logs for $container (last 10 lines) ---"
+            docker logs --tail=10 "$container" 2>&1 | sed 's/^/  /' || log "  No logs available for $container"
+        done
+    else
+        log "No lovable containers found"
+    fi
+
+    log "=== END CONTAINER STATUS: $phase ==="
+}
+
 # Function to cleanup old containers
 cleanup_old_containers() {
     local old_port=$1
@@ -178,22 +204,40 @@ deploy() {
         warning "Environment file .env.$environment not found, using defaults"
     fi
 
+    # Log initial state
+    log_all_containers "BEFORE DEPLOYMENT"
+
     # Deploy new version
     log "Deploying new version..."
     docker-compose -f "$COMPOSE_FILE" up -d
 
+    # Log state after new deployment (6 containers running)
+    log_all_containers "AFTER NEW DEPLOYMENT (6 CONTAINERS)"
+
     # Wait for health check
     wait_for_health $new_port
 
+    # Log state after health check
+    log_all_containers "AFTER HEALTH CHECK"
+
     # Switch nginx traffic
     switch_nginx_traffic $new_port $old_port
+
+    # Log state after traffic switch
+    log_all_containers "AFTER TRAFFIC SWITCH"
 
     # Wait a bit for traffic to stabilize
     log "Waiting for traffic to stabilize..."
     sleep 30
 
+    # Log state before cleanup
+    log_all_containers "BEFORE CLEANUP"
+
     # Cleanup old containers
     cleanup_old_containers $old_port
+
+    # Log final state
+    log_all_containers "AFTER CLEANUP (FINAL STATE)"
 
     # Show final status
     log "Deployment completed successfully!"
@@ -203,6 +247,31 @@ deploy() {
     # Show running containers
     log "Running containers:"
     docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+}
+
+# Function to show detailed container information
+show_detailed_status() {
+    log "=== DETAILED CONTAINER STATUS ==="
+
+    # Show all lovable-related containers
+    local containers=$(docker ps --format "{{.Names}}" | grep -E "(lovable|mysql|inngest)" || true)
+
+    if [ -n "$containers" ]; then
+        log "Found $(echo "$containers" | wc -l) lovable containers:"
+
+        for container in $containers; do
+            log "--- $container ---"
+            log "  Status: $(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null || echo 'unknown')"
+            log "  Ports: $(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{$p}} {{end}}' "$container" 2>/dev/null || echo 'none')"
+            log "  Image: $(docker inspect --format='{{.Config.Image}}' "$container" 2>/dev/null || echo 'unknown')"
+            log "  Created: $(docker inspect --format='{{.Created}}' "$container" 2>/dev/null || echo 'unknown')"
+            log "  Health: $(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo 'no health check')"
+        done
+    else
+        log "No lovable containers found"
+    fi
+
+    log "=== END DETAILED STATUS ==="
 }
 
 # Function to show current status
@@ -226,6 +295,9 @@ show_status() {
 
     log "Running containers:"
     docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+    # Show detailed status
+    show_detailed_status
 }
 
 # Main script logic
@@ -240,13 +312,17 @@ main() {
         "status")
             show_status
             ;;
+        "logs")
+            log_all_containers "MANUAL LOG CHECK"
+            ;;
         "help"|"-h"|"--help")
-            echo "Usage: $0 [blue|green|status] [dev|prod]"
+            echo "Usage: $0 [blue|green|status|logs] [dev|prod]"
             echo ""
             echo "Commands:"
             echo "  blue     Deploy to blue environment (port 3000)"
             echo "  green    Deploy to green environment (port 3001)"
             echo "  status   Show current deployment status"
+            echo "  logs     Show detailed logs for all containers"
             echo "  help     Show this help message"
             echo ""
             echo "Environments:"

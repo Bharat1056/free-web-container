@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MySQL Database
   mysql:
@@ -26,7 +24,7 @@ services:
 
   # Next.js Application
   app:
-    image: ${DOCKERHUB_USERNAME}/lovable:${DEPLOYMENT_VERSION}
+    image: ${DOCKERHUB_USERNAME}/lovable:latest
     container_name: ${APP_CONTAINER_NAME}
     restart: unless-stopped
     environment:
