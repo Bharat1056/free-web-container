@@ -93,9 +93,9 @@ services:
       app:
         condition: service_healthy
 
-volumes:
-  mysql_data:
-    driver: local
+# volumes:
+#   mysql_data:
+#     driver: local
 
 networks:
   lovable-network:
