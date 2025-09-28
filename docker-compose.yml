@@ -1,5 +1,4 @@
-version: "3.9"
-services:
+ services:
   mysql:
     image: mysql:8.0
     container_name: ${MYSQL_CONTAINER_NAME}
@@ -61,7 +60,6 @@ services:
         condition: service_healthy
     networks:
       - lovable-network
-    command: ["npm", "run", "start"]
     healthcheck:
       test:
         [
