@@ -74,18 +74,18 @@ jobs:
 
             # Set environment variables for staging from GitHub secrets
             export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-            export APP_PORT=${{ secrets.APP_PORT_STAGING }}
-            export MYSQL_PORT=${{ secrets.MYSQL_PORT_STAGING }}
-            export INNGEST_PORT=${{ secrets.INNGEST_PORT_STAGING }}
-            export APP_CONTAINER_NAME=${{ secrets.APP_CONTAINER_NAME_STAGING }}
-            export MYSQL_CONTAINER_NAME=${{ secrets.MYSQL_CONTAINER_NAME_STAGING }}
-            export INNGEST_CONTAINER_NAME=${{ secrets.INNGEST_CONTAINER_NAME_STAGING }}
+            export APP_PORT=${{ secrets.APP_PORT }}
+            export MYSQL_PORT=${{ secrets.MYSQL_PORT }}
+            export INNGEST_PORT=${{ secrets.INNGEST_PORT }}
+            export APP_CONTAINER_NAME=lovable-app-staging
+            export MYSQL_CONTAINER_NAME=lovable-mysql-staging
+            export INNGEST_CONTAINER_NAME=lovable-inngest-staging
             export MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }}
             export MYSQL_DATABASE=${{ secrets.MYSQL_DATABASE }}
             export MYSQL_USER=${{ secrets.MYSQL_USER }}
             export MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
-            export DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}
-            export INNGEST_BASE_URL=${{ secrets.INNGEST_BASE_URL_STAGING }}
+            export DATABASE_URL=${{ secrets.DATABASE_URL }}
+            export INNGEST_BASE_URL=${{ secrets.INNGEST_BASE_URL }}
             export INNGEST_EVENT_KEY=${{ secrets.INNGEST_EVENT_KEY }}
             export INNGEST_SIGNING_KEY=${{ secrets.INNGEST_SIGNING_KEY }}
             export GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
@@ -96,6 +96,8 @@ jobs:
             export CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
             export NEXT_PUBLIC_CLERK_SIGN_IN_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_URL }}
             export NEXT_PUBLIC_CLERK_SIGN_UP_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_UP_URL }}
+            export NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL }}
+            export NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=${{ secrets.NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL }}
 
             # Stop existing staging services
             docker-compose -f docker-compose.yml down || true
