@@ -82,6 +82,8 @@ services:
     command: "inngest serve -u http://app:3000/api/inngest"
     environment:
       INNGEST_PORT: ${INNGEST_PORT}
+      INNGEST_EVENT_KEY: ${INNGEST_EVENT_KEY}
+      INNGEST_SIGNING_KEY: ${INNGEST_SIGNING_KEY}
     ports:
       - "${INNGEST_PORT}:8288"
     networks:
