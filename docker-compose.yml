@@ -10,10 +10,7 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
-      - target: 3306
-        published: ${MYSQL_PORT}
-        protocol: tcp
-        mode: host
+      - "${MYSQL_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
@@ -58,10 +55,7 @@ services:
       NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL}
       NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL}
     ports:
-      - target: 3000
-        published: ${APP_PORT}
-        protocol: tcp
-        mode: host
+      - "${APP_PORT}:3000"
     depends_on:
       mysql:
         condition: service_healthy
@@ -79,23 +73,16 @@ services:
     image: inngest/inngest:latest
     container_name: ${INNGEST_CONTAINER_NAME}
     restart: unless-stopped
-    command: "inngest dev -u http://app:3000/api/inngest"
+    command: "inngest serve -u http://app:3000/api/inngest"
+    environment:
+      INNGEST_PORT: ${INNGEST_PORT}
     ports:
-      - target: 8288
-        published: ${INNGEST_PORT}
-        protocol: tcp
-        mode: host
+      - "${INNGEST_PORT}:8288"
     networks:
       - lovable-network
     depends_on:
       app:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8288/health"]
-      timeout: 10s
-      retries: 5
-      interval: 30s
-      start_period: 30s
 
 volumes:
   mysql_data:
