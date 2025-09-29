@@ -3,14 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model Project {
   id String @id @default(cuid())
-  name String @db.VarChar(255)
-  userId String @db.VarChar(255)
+  name String
+  userId String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -30,7 +30,7 @@ enum MessageType {
 
 model Message {
   id String @id @default(cuid())
-  content String @db.Text
+  content String
   role MessageRole
   type MessageType
   createdAt DateTime @default(now())
@@ -47,8 +47,8 @@ model Fragment {
   messageId String @unique
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
-  sandboxUrl String @db.VarChar(500)
-  title String @db.VarChar(255)
+  sandboxUrl String
+  title String
   files Json
 
   createdAt DateTime @default(now())
