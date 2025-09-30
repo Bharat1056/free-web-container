@@ -5,10 +5,12 @@ import Image from "next/image";
 import { SignedIn, SignedOut, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { UserControl } from "@/components/user-control";
+import { ThemeSelector } from "@/components/theme-selector";
 import { useScroll } from "@/hooks/use-scroll";
 import { useCurrentTheme } from "@/hooks/use-current-theme";
 import { cn } from "@/lib/utils";
@@ -16,11 +18,27 @@ import { cn } from "@/lib/utils";
 const ThemeSwitcher = () => {
   const { setTheme } = useTheme();
   const currentTheme = useCurrentTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const isDark = currentTheme === "dark";
 
   const toggleTheme = () => {
     setTheme(isDark ? "light" : "dark");
   };
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center gap-2">
+        <Sun className="h-4 w-4" />
+        <Switch checked={false} disabled aria-label="Toggle theme" />
+        <Moon className="h-4 w-4" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -50,6 +68,7 @@ export const Navbar = () => {
           <span className="font-semibold text-lg">Vibe</span>
         </Link>
         <div className="flex items-center gap-2">
+          <ThemeSelector />
           <ThemeSwitcher />
           <SignedOut>
             <div className="flex gap-2">

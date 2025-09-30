@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { MoodThemeProvider } from "@/hooks/use-mood-theme.tsx";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,8 +43,10 @@ export default function RootLayout({
                 disableTransitionOnChange
                 themes={["light", "dark"]}
               >
-                {children}
-                <Toaster />
+                <MoodThemeProvider>
+                  {children}
+                  <Toaster />
+                </MoodThemeProvider>
               </ThemeProvider>
             </ErrorBoundary>
           </body>
