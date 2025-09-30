@@ -50,7 +50,7 @@ const decisionAgent = createAgent<AgentState>({
     "Decides whether a request needs design enhancement or can go directly to coding",
   system: DECISION_PROMPT,
   model: gemini({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
     defaultParameters: {},
   }),
   lifecycle: {
@@ -92,7 +92,7 @@ const websiteDesignEnhancementAgent = createAgent<AgentState>({
   description: "Enhances user prompts with professional UI/UX design expertise",
   system: WEBSITE_DESIGN_ENHANCEMENT_PROMPT,
   model: gemini({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
     defaultParameters: {},
   }),
   lifecycle: {
@@ -246,7 +246,7 @@ const fragmentTitleGenerator = createAgent<AgentState>({
   description: "A fragment title generator",
   system: FRAGMENT_TITLE_PROMPT,
   model: gemini({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
   }),
 });
 
@@ -256,7 +256,7 @@ const responseGenerator = createAgent<AgentState>({
   description: "A response generator",
   system: RESPONSE_PROMPT,
   model: gemini({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
   }),
 });
 
