@@ -7,15 +7,134 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Project {
-  id String @id @default(cuid())
-  name String
-  userId String
+enum GenerationStatus {
+  IDLE
+  GENERATING
+  FAILED
+  CANCELLED
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum PaymentStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  plan          Plan      @default(FREE)
+  planExpiresAt DateTime?
+  couponCode    String?
+
+  sessions Session[]
+  accounts Account[]
+  payments Payment[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model Coupon {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  maxUses      Int?
+  usedCount    Int       @default(0)
+  durationDays Int?
+  expiresAt    DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([code])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  razorpayOrderId   String        @unique
+  razorpayPaymentId String?
+  amount            Int
+  currency          String
+  status            PaymentStatus @default(CREATED)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+model Project {
+  id                  String           @id @default(cuid())
+  name                String
+  userId              String
+  generationStatus    GenerationStatus @default(IDLE)
+  generationStartedAt DateTime?
+  inngestEventId      String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   messages Message[]
 
+  @@index([userId])
 }
 
 enum MessageRole {
@@ -29,34 +148,37 @@ enum MessageType {
 }
 
 model Message {
-  id String @id @default(cuid())
-  content String
-  role MessageRole
-  type MessageType
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String      @id @default(cuid())
+  content   String
+  role      MessageRole
+  type      MessageType
+  embedding Float[]     @default([])
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   projectId String
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   fragment Fragment?
+
+  @@index([projectId])
 }
 
 model Fragment {
-  id String @id @default(cuid())
-  messageId String @unique
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  messageId String  @unique
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   sandboxUrl String
-  title String
-  files Json
+  title      String
+  files      Json
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Usage {
-  key String @id
+  key    String    @id
   points Int
   expire DateTime?
 }
