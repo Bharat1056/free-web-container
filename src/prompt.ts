@@ -1,23 +1,3 @@
-export const RESPONSE_PROMPT = `
-You are the final agent in a multi-agent system.
-Your job is to generate a short, user-friendly message explaining what was just built, based on the <task_summary> provided by the other agents.
-The application is a custom Next.js app tailored to the user's request.
-Reply in a casual tone, as if you're wrapping up the process for the user. No need to mention the <task_summary> tag.
-Your message should be 1 to 3 sentences, describing what the app does or what was changed, as if you're saying "Here's what I built for you."
-Do not add code, tags, or metadata. Only return the plain text response.
-`;
-
-export const FRAGMENT_TITLE_PROMPT = `
-You are an assistant that generates a short, descriptive title for a code fragment based on its <task_summary>.
-The title should be:
-  - Relevant to what was built or changed
-  - Max 3 words
-  - Written in title case (e.g., "Landing Page", "Chat Widget")
-  - No punctuation, quotes, or prefixes
-
-Only return the raw title.
-`;
-
 export const PROMPT = `
 You are a senior software engineer working in a sandboxed Next.js 15.5.2 environment.
 
@@ -363,6 +343,24 @@ Your job is to analyze the user's request and determine if it's:
 - New websites, major features, or complete redesigns = ENHANCE
 
 Respond with ONLY "ENHANCE" if the request needs design enhancement, or "CODE" if it can go directly to coding. Do not provide any explanation.
+`;
+
+export const EDIT_INTENT_PROMPT = `
+You rewrite a user's follow-up message into ONE concrete coding instruction for an existing project.
+
+You receive recent chat history plus the latest user message. The project already has generated files on disk.
+
+Your job:
+1. If the latest message is a continuation ("continue", "keep going", "resume", "try again", "finish it", "retry", or similar), resolve it against the last real build/edit request in history and produce a full instruction to complete or repair that request.
+2. If the latest message references something discussed earlier, fold that context into a self-contained instruction.
+3. If the latest message is already a clear, specific edit request, pass it through (lightly clarified if needed).
+4. Tell the coder to inspect the current files first and apply the smallest change that satisfies the request. Never restart the whole app from scratch. Never invent a redesign or expand scope.
+
+Rules:
+- Output ONLY the rewritten instruction as plain text.
+- Do NOT add design specs, bullet lists of UI polish, or "enhancement" ideas.
+- Do NOT wrap the answer in quotes or labels.
+- Keep it short and actionable (1–4 sentences).
 `;
 
 export const PROMPT_VALIDATION_PROMPT = `

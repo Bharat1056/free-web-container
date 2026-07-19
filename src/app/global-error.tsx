@@ -15,9 +15,9 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <html>
-      <body>
-        <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+    <html lang="en">
+      <body className="font-sans antialiased">
+        <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-4 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50">
           <ErrorDisplay
             error={error}
             showRetry={true}

@@ -1,8 +1,10 @@
+"use client";
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutoSize from "react-textarea-autosize";
 import { z } from "zod";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowUpIcon, Loader2Icon } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -13,8 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 import { useRouter } from "next/navigation";
 import { PROJECT_TEMPLATES } from "@/modules/home/constants";
-import { useClerk, useUser } from "@clerk/nextjs";
 import { isTRPCClientError } from "@trpc/client";
+import { useSession } from "@/lib/auth-client";
+import { showMutationErrorToast } from "@/lib/mutation-error-toast";
 
 const formSchema = z.object({
   value: z
@@ -23,12 +26,45 @@ const formSchema = z.object({
     .max(10000, { message: "Value is too long" }),
 });
 
-export const ProjectForm = () => {
+export function ProjectForm() {
   const router = useRouter();
-  const clerk = useClerk();
   const trpc = useTRPC();
-  const { user } = useUser();
+  const { data: session } = useSession();
+  const user = session?.user;
   const queryClient = useQueryClient();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
+
+  const goSignIn = () => {
+    router.push("/sign-in?callbackUrl=/?compose=1");
+  };
+
+  /**
+   * On mount, focus the textarea and scroll the composer into view.
+   * Also clears a leftover `?compose=1` flag from sign-in / CTA redirects.
+   */
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      textareaRef.current?.focus();
+      composerRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("compose")) {
+        params.delete("compose");
+        const next = params.toString();
+        window.history.replaceState(
+          null,
+          "",
+          next ? `/?${next}` : window.location.pathname
+        );
+      }
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const createProject = useMutation({
     ...trpc.projects.create.mutationOptions(),
@@ -55,13 +91,15 @@ export const ProjectForm = () => {
       }
       queryClient.invalidateQueries(trpc.usage.status.queryOptions());
       queryClient.invalidateQueries(trpc.projects.getMany.queryOptions());
-      toast.error(error.message);
+      showMutationErrorToast(error, {
+        onSignIn: goSignIn,
+      });
     },
   });
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (!user) {
-      clerk.openSignIn();
+      goSignIn();
       return;
     }
     await createProject.mutateAsync({
@@ -86,31 +124,38 @@ export const ProjectForm = () => {
       shouldValidate: true,
       shouldTouch: true,
     });
+    textareaRef.current?.focus();
   };
 
   return (
     <Form {...form}>
-      <section className="space-y-6">
+      <section className="space-y-4">
         <form
+          ref={composerRef}
+          id="project-composer"
           onSubmit={form.handleSubmit(onSubmit)}
           className={cn(
-            "relative border p-4 pt-1 rounded-xl bg-sidebar dark:bg-sidebar transition-all",
-            isFocused && "shadow-xs"
+            "relative rounded-xl border-2 border-border bg-card p-3 shadow-md transition-[box-shadow,transform]",
+            isFocused && "shadow-lg"
           )}
         >
-          <FormField
+          <FormwField
             control={form.control}
             name="value"
             render={({ field }) => (
               <TextareaAutoSize
                 {...field}
+                ref={(el) => {
+                  textareaRef.current = el;
+                  field.ref(el);
+                }}
                 disabled={isPending}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                minRows={2}
+                minRows={3}
                 maxRows={8}
-                className="pt-4 resize-none border-none w-full outline-none bg-transparent"
-                placeholder="What would you like to build?"
+                className="w-full resize-none border-none bg-transparent pt-2 text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground/70"
+                placeholder="Describe the app or website you want to build…"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
@@ -121,42 +166,44 @@ export const ProjectForm = () => {
             )}
           />
 
-          <div className="flex gap-x-2 items-end justify-between pt-2">
-            <div className="text-[10px] text-muted-foreground font-mono">
-              <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                <span>&#8984;</span>Enter
+          <div className="flex items-end justify-between gap-3 pt-2">
+            <div className="font-mono text-[11px] text-muted-foreground">
+              <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border-2 border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                <span>⌘</span>Enter
               </kbd>
-              &nbsp;to submit
+              <span className="ml-1.5 hidden sm:inline">to generate</span>
             </div>
             <Button
+              type="submit"
               disabled={isButtonDisabled}
-              className={cn(
-                "size-8 rounded-full",
-                isButtonDisabled && "bg-muted-foreground border"
-              )}
+              size="sm"
+              className="h-8 gap-1.5 px-3"
             >
               {isPending ? (
-                <Loader2Icon className="size-4 animate-spin" />
+                <Loader2Icon className="size-3.5 animate-spin" />
               ) : (
-                <ArrowUpIcon />
+                <ArrowUpIcon className="size-3.5" />
               )}
+              Generate
             </Button>
           </div>
         </form>
-        <div className="flex-wrap justify-center gap-2 hidden md:flex max-w-3xl">
+
+        <div className="hidden max-w-3xl flex-wrap justify-center gap-2 md:flex">
           {PROJECT_TEMPLATES.map((template) => (
             <Button
               key={template.title}
+              type="button"
               variant="outline"
               size="sm"
-              className="bg-white dark:bg-sidebar"
+              className="h-8 border-2 border-border bg-card text-xs font-medium shadow-xs"
               onClick={() => onSelect(template.prompt)}
             >
-              {template.emoji} {template.title}
+              {template.title}
             </Button>
           ))}
         </div>
       </section>
     </Form>
   );
-};
+}
