@@ -1,21 +1,35 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  DM_Sans,
+  Geist_Mono,
+  Patrick_Hand,
+  Space_Grotesk,
+} from "next/font/google";
 import "./globals.css";
 import { TRPCReactProvider } from "@/trpc/client";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
-import { ClerkProvider } from "@clerk/nextjs";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { MoodThemeProvider } from "@/hooks/use-mood-theme.tsx";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const dmSans = DM_Sans({
+  variable: "--font-dm-sans",
+  subsets: ["latin"],
+});
+
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const patrickHand = Patrick_Hand({
+  variable: "--font-patrick-hand",
+  subsets: ["latin"],
+  weight: "400",
 });
 
 export const metadata: Metadata = {
@@ -29,29 +43,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <TRPCReactProvider>
-        <html lang="en" suppressHydrationWarning>
-          <body
-            className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-          >
-            <ErrorBoundary>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="system"
-                enableSystem
-                disableTransitionOnChange
-                themes={["light", "dark"]}
-              >
-                <MoodThemeProvider>
-                  {children}
-                  <Toaster />
-                </MoodThemeProvider>
-              </ThemeProvider>
-            </ErrorBoundary>
-          </body>
-        </html>
-      </TRPCReactProvider>
-    </ClerkProvider>
+    <TRPCReactProvider>
+      <html lang="en" suppressHydrationWarning>
+        <body
+          className={`${dmSans.variable} ${spaceGrotesk.variable} ${geistMono.variable} ${patrickHand.variable} font-sans antialiased`}
+        >
+          <ErrorBoundary>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+              themes={["light", "dark"]}
+            >
+              {children}
+              <Toaster />
+            </ThemeProvider>
+          </ErrorBoundary>
+        </body>
+      </html>
+    </TRPCReactProvider>
   );
 }
