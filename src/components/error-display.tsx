@@ -166,12 +166,16 @@ export function ErrorDisplay({
 
   // Card variant (default)
   return (
-    <Card className={`w-full max-w-md mx-auto ${className}`}>
+    <Card
+      className={`mx-auto w-full max-w-md border-2 border-border bg-card shadow-md ${className}`}
+    >
       <CardHeader className="text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border-2 border-border bg-surface-salmon/50">
           {getErrorIcon(userFriendlyError)}
         </div>
-        <CardTitle className="text-xl">{userFriendlyError.title}</CardTitle>
+        <CardTitle className="font-display text-xl font-bold tracking-tight">
+          {userFriendlyError.title}
+        </CardTitle>
         <CardDescription className="text-muted-foreground">
           {userFriendlyError.description}
         </CardDescription>

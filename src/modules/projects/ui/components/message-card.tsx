@@ -1,102 +1,106 @@
-import { Card } from "@/components/ui/card";
+"use client";
+
 import { cn } from "@/lib/utils";
-import { Fragment, MessageRole, MessageType } from "@prisma/client";
+import { MessageRole, MessageType } from "@prisma/client";
 import { format } from "date-fns";
-import { ChevronRightIcon, Code2Icon } from "lucide-react";
 import Image from "next/image";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+
+/** Assistant replies should be short; clamp anything unexpectedly long. */
+const MAX_ASSISTANT_LINES = 8;
 
 interface UserMessageProps {
   content: string;
+  isOptimistic?: boolean;
 }
 
-const UserMessage = ({ content }: UserMessageProps) => {
+const UserMessage = ({ content, isOptimistic }: UserMessageProps) => {
   return (
-    <div className="flex justify-end pb-4 pr-2 pl-10">
-      <Card className="rounded-lg bg-muted p-3 shadow-one border-none max-w-[80%] break-words">
+    <div className="flex justify-end pb-4 pl-10 pr-2">
+      <div
+        className={cn(
+          "max-w-[85%] rounded-xl border-2 border-border bg-surface-yellow/40 px-3.5 py-2.5 text-sm leading-relaxed shadow-sm break-words",
+          isOptimistic && "opacity-70",
+        )}
+      >
         {content}
-      </Card>
+      </div>
     </div>
-  );
-};
-
-interface FragmentCardProps {
-  fragment: Fragment | null;
-  isActiveFragment: boolean;
-  onFragmentClick: (fragment: Fragment | null) => void;
-}
-
-const FragmentCard = ({
-  fragment,
-  isActiveFragment,
-  onFragmentClick,
-}: FragmentCardProps) => {
-  return (
-    <button
-      className={cn(
-        "flex items-start test-start gap-2 border rounded-lg bg-muted w-fit p-3 hover:bg-secondary transition-colors",
-        isActiveFragment &&
-          "bg-primary text-primary-foreground border-primary hover:bg-primary"
-      )}
-      onClick={() => onFragmentClick(fragment)}
-    >
-      <Code2Icon className="size-4 mt-0.5" />
-      <div className="flex flex-col flex-1">
-        <span className="text-sm font-medium line-clamp-1">
-          {fragment?.title}
-        </span>
-        <span className="text-sm">Preview</span>
-      </div>
-      <div className="flex items-center justify-center mt-0.5">
-        <ChevronRightIcon className="size-4" />
-      </div>
-    </button>
   );
 };
 
 interface AssistantMessageProps {
   content: string;
-  fragment: Fragment | null;
   createdAt: Date;
-  isActiveFragment: boolean;
   type: MessageType;
-  onFragmentClick: (fragment: Fragment | null) => void;
+  showRetryButton?: boolean;
+  isRetryPending?: boolean;
+  onRetry?: () => void;
 }
 
 const AssistantMessage = ({
   content,
   createdAt,
-  fragment,
-  isActiveFragment,
-  onFragmentClick,
   type,
+  showRetryButton,
+  isRetryPending,
+  onRetry,
 }: AssistantMessageProps) => {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = content.split("\n").length > MAX_ASSISTANT_LINES;
+  const isRetryMessage = type === "RETRY";
+
   return (
     <div
       className={cn(
-        "flex flex-col group px-2 pb-4",
-        type === "ERROR" && "text-red-700 dark:text-red-500"
+        "group flex flex-col px-2 pb-4",
+        isRetryMessage && "text-destructive",
       )}
     >
-      <div className="flex items-center gap-2 pl-2 mb-2">
+      <div className="mb-2 flex items-center gap-2 pl-2">
         <Image
           src="/logo.svg"
-          alt="vibe"
-          width={18}
-          height={18}
+          alt="Vibe"
+          width={16}
+          height={16}
           className="shrink-0"
         />
-        <span className="text-sm font-medium">Vibe</span>
+        <span className="text-sm font-medium tracking-tight">Vibe</span>
         <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
           {format(createdAt, "HH:mm 'on' MMM dd, yyyy")}
         </span>
       </div>
-      <div className="pl-8.5 flex flex-col gap-y-4">
-        <span>{content}</span>
-        <FragmentCard
-          fragment={fragment}
-          isActiveFragment={isActiveFragment}
-          onFragmentClick={onFragmentClick}
-        />
+      <div className="flex flex-col gap-y-3 pl-8 text-sm leading-relaxed">
+        <span
+          className={cn(
+            "whitespace-pre-wrap break-words",
+            isLong && !expanded && "line-clamp-[8]",
+          )}
+        >
+          {content}
+        </span>
+        {isLong && (
+          <button
+            type="button"
+            onClick={() => setExpanded((prev) => !prev)}
+            className="w-fit text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        )}
+        {showRetryButton && onRetry && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-fit"
+            disabled={isRetryPending}
+            onClick={onRetry}
+          >
+            {isRetryPending ? "Retrying…" : "Retry"}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -105,34 +109,36 @@ const AssistantMessage = ({
 interface Props {
   content: string;
   role: MessageRole;
-  fragment: Fragment | null;
   createdAt: Date;
-  isActiveFragment: boolean;
   type: MessageType;
-  onFragmentClick: (fragment: Fragment | null) => void;
+  isOptimistic?: boolean;
+  showRetryButton?: boolean;
+  isRetryPending?: boolean;
+  onRetry?: () => void;
 }
 
 export const MessageCard = ({
   content,
   role,
-  fragment,
   createdAt,
-  isActiveFragment,
   type,
-  onFragmentClick,
+  isOptimistic,
+  showRetryButton,
+  isRetryPending,
+  onRetry,
 }: Props) => {
   if (role === "ASSISTANT") {
     return (
       <AssistantMessage
         content={content}
-        fragment={fragment}
         createdAt={createdAt}
-        isActiveFragment={isActiveFragment}
-        onFragmentClick={onFragmentClick}
         type={type}
+        showRetryButton={showRetryButton}
+        isRetryPending={isRetryPending}
+        onRetry={onRetry}
       />
     );
   }
 
-  return <UserMessage content={content} />;
+  return <UserMessage content={content} isOptimistic={isOptimistic} />;
 };

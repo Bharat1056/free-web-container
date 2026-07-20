@@ -1,5 +1,7 @@
 import { inngest } from "@/inngest/client";
 import prisma from "@/lib/db";
+import { embedText } from "@/lib/embeddings";
+import { reconcileProjectGenerationStatus } from "@/inngest/run-status";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { z } from "zod";
 import { generateSlug } from "random-word-slugs";
@@ -29,7 +31,7 @@ export const projectsRouter = createTRPCRouter({
         });
       }
 
-      return existingProject;
+      return reconcileProjectGenerationStatus(existingProject);
     }),
   getMany: protectedProcedure.query(async ({ ctx }) => {
     const projects = await prisma.project.findMany({
@@ -78,29 +80,41 @@ export const projectsRouter = createTRPCRouter({
         });
       }
 
+      const embedding = await embedText(input.value);
+
       const createdProject = await prisma.project.create({
         data: {
           userId: ctx.auth.userId,
           name: generateSlug(2, {
             format: "kebab",
           }),
+          generationStatus: "GENERATING",
+          generationStartedAt: new Date(),
           messages: {
             create: {
               content: input.value,
               role: "USER",
               type: "RESULT",
+              embedding,
             },
           },
         },
       });
-      await inngest.send({
+
+      const { ids } = await inngest.send({
         name: "test/create.website",
         data: {
           value: input.value,
           projectId: createdProject.id,
+          retry: false,
         },
       });
 
-      return createdProject;
+      return prisma.project.update({
+        where: { id: createdProject.id },
+        data: {
+          inngestEventId: ids[0] ?? null,
+        },
+      });
     }),
 });
