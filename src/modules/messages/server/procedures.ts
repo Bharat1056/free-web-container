@@ -1,5 +1,6 @@
 import { inngest } from "@/inngest/client";
 import prisma from "@/lib/db";
+import { createMessage } from "@/lib/message-context";
 import { consumeUsage } from "@/lib/usage";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
@@ -77,19 +78,27 @@ export const messagesRouter = createTRPCRouter({
         }
       }
 
-      const newMessage = await prisma.message.create({
-        data: {
-          content: input.value,
-          role: "USER",
-          type: "RESULT",
-          projectId: input.projectId,
-        },
+      const newMessage = await createMessage({
+        content: input.value,
+        role: "USER",
+        type: "RESULT",
+        projectId: input.projectId,
       });
-      await inngest.send({
+
+      const { ids } = await inngest.send({
         name: "test/create.website",
         data: {
           value: input.value,
           projectId: input.projectId,
+        },
+      });
+
+      await prisma.project.update({
+        where: { id: input.projectId },
+        data: {
+          generationStatus: "GENERATING",
+          generationStartedAt: new Date(),
+          inngestEventId: ids[0] ?? null,
         },
       });
 

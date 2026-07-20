@@ -23,8 +23,9 @@ export interface UserFriendlyError {
 const ERROR_MESSAGES: Record<string, UserFriendlyError> = {
   // Authentication errors
   UNAUTHORIZED: {
-    title: "Access Denied",
-    description: "You need to sign in to access this page.",
+    title: "Sign in required",
+    description:
+      "Your session expired or you're signed out. Sign in to keep building.",
     action: "Sign In",
   },
   FORBIDDEN: {
@@ -140,7 +141,7 @@ function getErrorCode(error: unknown): string {
     // Check for common error patterns
     if (
       error.message.includes("401") ||
-      error.message.includes("unauthorized")
+      /unauthorized|not authenticated|sign\s*in/i.test(error.message)
     ) {
       return "UNAUTHORIZED";
     }

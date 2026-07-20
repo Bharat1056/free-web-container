@@ -1,10 +1,17 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { cache } from "react";
 import superjson from "superjson";
-import { auth } from "@clerk/nextjs/server";
+
+import { getSession } from "@/lib/session";
 
 export const createTRPCContext = cache(async () => {
-  return { auth: await auth() };
+  const session = await getSession();
+  return {
+    auth: {
+      userId: session?.user?.id ?? null,
+      session,
+    },
+  };
 });
 
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
@@ -21,11 +28,17 @@ const t = initTRPC.context<Context>().create({
 
 const isAuthenticated = t.middleware(({ next, ctx }) => {
   if (!ctx.auth.userId) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Sign in required",
+    });
   }
   return next({
     ctx: {
-      auth: ctx.auth,
+      auth: {
+        userId: ctx.auth.userId,
+        session: ctx.auth.session,
+      },
     },
   });
 });

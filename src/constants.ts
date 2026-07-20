@@ -67,6 +67,12 @@ export const MODELS = {
     primary: "gpt-4.1-mini",
     fallbacks: ["gpt-4.1"],
   },
+  /** Classifies continuation vs real instruction; resolves effective prompts. */
+  messageIntent: {
+    provider: "openai",
+    primary: "gpt-4.1-mini",
+    fallbacks: ["gpt-4.1"],
+  },
   /** Vector embeddings for RAG message retrieval. */
   embedding: {
     provider: "gemini",
@@ -100,9 +106,8 @@ export function getModelChain(role: ModelRole): string[] {
 }
 
 /**
- * Active model id for a role (env override or primary).
- * Used by agents that bind a model at creation time.
+ * returns the 1st chain active model id for a role.
  */
 export function getModelId(role: ModelRole): string {
-  return getModelChain(role)[0];
+  return getModelChain(role)[0] ?? "";
 }
