@@ -2,89 +2,53 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { SignedIn, SignedOut, SignInButton, SignUpButton } from "@clerk/nextjs";
-import { useTheme } from "next-themes";
-import { Moon, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CrownIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { UserControl } from "@/components/user-control";
-import { ThemeSelector } from "@/components/theme-selector";
+import { AppearanceControl } from "@/components/appearance-control";
 import { useScroll } from "@/hooks/use-scroll";
-import { useCurrentTheme } from "@/hooks/use-current-theme";
+import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
-
-const ThemeSwitcher = () => {
-  const { setTheme } = useTheme();
-  const currentTheme = useCurrentTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const isDark = currentTheme === "dark";
-
-  const toggleTheme = () => {
-    setTheme(isDark ? "light" : "dark");
-  };
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center gap-2">
-        <Sun className="h-4 w-4" />
-        <Switch checked={false} disabled aria-label="Toggle theme" />
-        <Moon className="h-4 w-4" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <Sun className="h-4 w-4" />
-      <Switch
-        checked={isDark}
-        onCheckedChange={toggleTheme}
-        aria-label="Toggle theme"
-      />
-      <Moon className="h-4 w-4" />
-    </div>
-  );
-};
 
 export const Navbar = () => {
   const scrolled = useScroll();
+  const { data: session, isPending } = useSession();
+  const signedIn = Boolean(session?.user);
+
   return (
     <nav
       className={cn(
-        "p-4 bg-transparent fixed top-0 left-0 right-0 z-50 transition-all duration-200 border-b border-transparent",
-        scrolled && "bg-background border-border"
+        "fixed top-0 right-0 left-0 z-50 border-b-2 border-border transition-[background-color,box-shadow] duration-200",
+        scrolled ? "bg-card shadow-sm" : "bg-background",
       )}
     >
-      <div className="max-w-5xl mx-auto w-full flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-2">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 md:px-6">
+        <Link href="/" className="flex w-fit items-center gap-2.5">
           <Image src="/logo.svg" alt="Vibe" width={24} height={24} />
-          <span className="font-semibold text-lg">Vibe</span>
+          <span className="font-display text-base font-bold tracking-tight">
+            Vibe
+          </span>
         </Link>
-        <div className="flex items-center gap-2">
-          <ThemeSelector />
-          <ThemeSwitcher />
-          <SignedOut>
-            <div className="flex gap-2">
-              <SignUpButton>
-                <Button variant="outline" size="sm">
-                  Sign up
-                </Button>
-              </SignUpButton>
-              <SignInButton>
-                <Button size="sm">Sign in</Button>
-              </SignInButton>
-            </div>
-          </SignedOut>
-          <SignedIn>
-            <UserControl showName />
-          </SignedIn>
+
+        <div className="flex items-center gap-3 md:gap-5">
+          <AppearanceControl />
+          {!isPending && !signedIn && (
+            <>
+              <Button asChild size="sm" className="h-9">
+                <Link href="/pricing">
+                  <CrownIcon className="size-3.5" />
+                  Pricing
+                </Link>
+              </Button>
+              <Button asChild size="sm" className="h-9">
+                <Link href="/sign-in?callbackUrl=/?compose=1">
+                  Get started
+                </Link>
+              </Button>
+            </>
+          )}
+          {!isPending && signedIn && <UserControl showName />}
         </div>
       </div>
     </nav>

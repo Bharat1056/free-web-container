@@ -12,7 +12,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
-import { Form, FormField } from "@/components/ui/form";
+import { Form } from "@/components/ui/form";
 import { useRouter } from "next/navigation";
 import { PROJECT_TEMPLATES } from "@/modules/home/constants";
 import { isTRPCClientError } from "@trpc/client";
@@ -58,7 +58,7 @@ export function ProjectForm() {
         window.history.replaceState(
           null,
           "",
-          next ? `/?${next}` : window.location.pathname
+          next ? `/?${next}` : window.location.pathname,
         );
       }
     }, 120);
@@ -136,7 +136,7 @@ export function ProjectForm() {
           onSubmit={form.handleSubmit(onSubmit)}
           className={cn(
             "relative rounded-xl border-2 border-border bg-card p-3 shadow-md transition-[box-shadow,transform]",
-            isFocused && "shadow-lg"
+            isFocused && "shadow-lg",
           )}
         >
           <FormwField

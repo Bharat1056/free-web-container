@@ -1,18 +1,20 @@
+"use client";
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutoSize from "react-textarea-autosize";
 import { z } from "zod";
 import { useState } from "react";
-import { toast } from "sonner";
 import { ArrowUpIcon, Loader2Icon } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import { cn } from "@/lib/utils";
+import { useSession } from "@/lib/auth-client";
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 import { Usage } from "@/modules/projects/ui/components/usage";
 import { useRouter } from "next/navigation";
+import { showMutationErrorToast } from "@/lib/mutation-error-toast";
 
 interface Props {
   projectId: string;
@@ -29,30 +31,77 @@ export const MessageForm = ({ projectId }: Props) => {
   const router = useRouter();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const { data: session, isPending: sessionPending } = useSession();
+  const user = session?.user;
+
+  const openSignIn = () => {
+    router.push(`/sign-in?callbackUrl=/projects/${projectId}`);
+  };
 
   const { data: usage } = useQuery(trpc.usage.status.queryOptions());
+  const messagesQuery = trpc.messages.getMany.queryOptions({ projectId });
 
   const createMessage = useMutation({
     ...trpc.messages.create.mutationOptions(),
-    onSuccess: () => {
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({
+        queryKey: messagesQuery.queryKey,
+      });
+
+      const now = new Date();
+
+      queryClient.setQueryData(messagesQuery.queryKey, (current) => [
+        ...(current ?? []),
+        {
+          id: `optimistic-${crypto.randomUUID()}`,
+          content: variables.value,
+          role: "USER" as const,
+          type: "RESULT" as const,
+          embedding: [],
+          createdAt: now,
+          updatedAt: now,
+          projectId,
+          fragment: null,
+        },
+      ]);
+
       form.reset();
-      queryClient.invalidateQueries(
-        trpc.messages.getMany.queryOptions({ projectId })
-      );
-      queryClient.invalidateQueries(trpc.usage.status.queryOptions());
+      return undefined;
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      queryClient.setQueryData(messagesQuery.queryKey, (current) =>
+        current?.filter((message) => !message.id.startsWith("optimistic-"))
+      );
+      form.setValue("value", variables.value, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+
       if (
         error.data?.code === "TOO_MANY_REQUESTS" &&
         error.message === "You have run out of credits"
       ) {
         router.push("/pricing");
       }
-      toast.error(error.message);
+      showMutationErrorToast(error, { onSignIn: openSignIn });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries(
+        messagesQuery
+      );
+      queryClient.invalidateQueries(
+        trpc.projects.getOne.queryOptions({ id: projectId })
+      );
+      queryClient.invalidateQueries(trpc.usage.status.queryOptions());
     },
   });
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (!sessionPending && !user) {
+      openSignIn();
+      return;
+    }
+
     await createMessage.mutateAsync({
       value: values.value,
       projectId,
@@ -79,9 +128,8 @@ export const MessageForm = ({ projectId }: Props) => {
       <form
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn(
-          "relative border p-4 pt-1 rounded-xl bg-sidebar dark:bg-sidebar transition-all",
-          isFocused && "shadow-xs",
-          "rounded-t-none"
+          "relative rounded-b-xl border-2 border-t-0 border-border bg-card p-3 transition-shadow",
+          isFocused && "shadow-sm"
         )}
       >
         <FormField
@@ -95,8 +143,8 @@ export const MessageForm = ({ projectId }: Props) => {
               onBlur={() => setIsFocused(false)}
               minRows={2}
               maxRows={8}
-              className="pt-4 resize-none border-none w-full outline-none bg-transparent"
-              placeholder="What would you like to build?"
+              className="w-full resize-none border-none bg-transparent pt-1 text-sm leading-relaxed outline-none placeholder:text-muted-foreground/70"
+              placeholder="Ask for a change or describe the next feature…"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
@@ -107,25 +155,24 @@ export const MessageForm = ({ projectId }: Props) => {
           )}
         />
 
-        <div className="flex gap-x-2 items-end justify-between pt-2">
-          <div className="text-[10px] text-muted-foreground font-mono">
-            <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-              <span>&#8984;</span>Enter
+        <div className="flex items-end justify-between gap-2 pt-2">
+          <div className="font-mono text-[11px] text-muted-foreground">
+            <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border-2 border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              <span>⌘</span>Enter
             </kbd>
-            &nbsp;to submit
           </div>
           <Button
+            type="submit"
             disabled={isButtonDisabled}
-            className={cn(
-              "size-8 rounded-full",
-              isButtonDisabled && "bg-muted-foreground border"
-            )}
+            size="sm"
+            className="h-8 gap-1.5 px-3"
           >
             {isPending ? (
-              <Loader2Icon className="size-4 animate-spin" />
+              <Loader2Icon className="size-3.5 animate-spin" />
             ) : (
-              <ArrowUpIcon />
+              <ArrowUpIcon className="size-3.5" />
             )}
+            Send
           </Button>
         </div>
       </form>
