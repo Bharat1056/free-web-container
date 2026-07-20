@@ -129,6 +129,8 @@ model Project {
   generationStatus    GenerationStatus @default(IDLE)
   generationStartedAt DateTime?
   inngestEventId      String?
+  sandboxId           String?
+  sandboxUrl          String?
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
@@ -144,7 +146,7 @@ enum MessageRole {
 
 enum MessageType {
   RESULT
-  ERROR
+  RETRY
 }
 
 model Message {
@@ -152,6 +154,7 @@ model Message {
   content   String
   role      MessageRole
   type      MessageType
+  errorDetails Json?
   embedding Float[]     @default([])
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
@@ -172,6 +175,8 @@ model Fragment {
   sandboxUrl String
   title      String
   files      Json
+  /** Older fragments are disabled when a newer RESULT fragment is created. */
+  disabled  Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

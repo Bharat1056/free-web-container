@@ -37,18 +37,6 @@ export const GENERATION_STALE_MS = 5 * 60 * 1000;
  *   `MODEL_CODE=gpt-4.1`.
  */
 export const MODELS = {
-  /** Decides ENHANCE vs CODE before generation. */
-  decision: {
-    provider: "openai",
-    primary: "gpt-4.1-mini",
-    fallbacks: ["gpt-4.1"],
-  },
-  /** Expands the user prompt into a UI/UX design spec. */
-  enhancement: {
-    provider: "openai",
-    primary: "gpt-4.1",
-    fallbacks: ["gpt-4.1-mini"],
-  },
   /** Writes Next.js / Tailwind / shadcn code in the sandbox. */
   code: {
     provider: "openai",
@@ -57,12 +45,6 @@ export const MODELS = {
   },
   /** Validates that a prompt is a website/app build request. */
   promptValidation: {
-    provider: "openai",
-    primary: "gpt-4.1-mini",
-    fallbacks: ["gpt-4.1"],
-  },
-  /** Resolves edit/continue messages into a concrete coding instruction. */
-  editIntent: {
     provider: "openai",
     primary: "gpt-4.1-mini",
     fallbacks: ["gpt-4.1"],
@@ -100,9 +82,8 @@ export function getModelChain(role: ModelRole): string[] {
 }
 
 /**
- * Active model id for a role (env override or primary).
- * Used by agents that bind a model at creation time.
+ * returns the 1st chain active model id for a role.
  */
 export function getModelId(role: ModelRole): string {
-  return getModelChain(role)[0];
+  return getModelChain(role)[0] ?? "";
 }

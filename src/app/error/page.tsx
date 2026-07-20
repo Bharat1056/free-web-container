@@ -4,19 +4,14 @@ import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ErrorDisplay } from "@/components/error-display";
 
-/**
- * Component that reads search parameters and displays error information
- */
 function ErrorPageContent() {
   const searchParams = useSearchParams();
 
-  // Extract error information from URL parameters
   const errorCode = searchParams.get("code");
   const errorMessage = searchParams.get("message");
   const errorTitle = searchParams.get("title");
   const errorDescription = searchParams.get("description");
 
-  // Create error object from URL parameters
   const error =
     errorCode || errorMessage
       ? {
@@ -37,9 +32,6 @@ function ErrorPageContent() {
   );
 }
 
-/**
- * Loading fallback component
- */
 function ErrorPageLoading() {
   return (
     <ErrorDisplay
@@ -53,13 +45,9 @@ function ErrorPageLoading() {
   );
 }
 
-/**
- * Dedicated error page that can be redirected to when errors occur
- * This page reads error information from URL search parameters
- */
 export default function ErrorPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+    <div className="bg-atmosphere flex min-h-screen items-center justify-center p-4">
       <Suspense fallback={<ErrorPageLoading />}>
         <ErrorPageContent />
       </Suspense>

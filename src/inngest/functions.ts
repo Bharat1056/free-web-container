@@ -1,492 +1,312 @@
-import { Sandbox } from "@e2b/code-interpreter";
-import {
-  createAgent,
-  createTool,
-  createNetwork,
-  openai,
-  gemini,
-  type Tool,
-  createState,
-  Message,
-} from "@inngest/agent-kit";
+import { NonRetriableError, RetryAfterError } from "inngest";
 import { inngest } from "./client";
+import { sanitizeFragmentTitle } from "@/inngest/utils";
 import {
-  getSandbox,
-  lastAssistantTextMessageContent,
-  parseAgentOutput,
-} from "@/inngest/utils";
-import { z } from "zod";
+  getOrCreateProjectSandbox,
+  hydrateSandboxWithFragmentFiles,
+  persistProjectSandboxUrl,
+} from "@/inngest/sandbox";
+import { isRateLimitError, throwIfRateLimited } from "@/inngest/rate-limit";
+import { runCodeToolLoop } from "@/inngest/code-tool-loop";
+import { getRelevantMessages } from "@/lib/message-context";
+import { getModelChain } from "@/constants";
+import { isRetryPayload, toErrorDetails } from "@/lib/retry";
 import {
-  PROMPT,
-  WEBSITE_DESIGN_ENHANCEMENT_PROMPT,
-  DECISION_PROMPT,
-  FRAGMENT_TITLE_PROMPT,
-  RESPONSE_PROMPT,
-} from "@/prompt";
-import prisma from "@/lib/db";
-import { SANDBOX_TIMEOUT } from "@/types";
-import { generateSlug } from "random-word-slugs";
+  createAssistantRetryMessage,
+  findLatestActiveFragmentFiles,
+  findProjectSandboxId,
+  markProjectGenerationStatus,
+  saveSuccessfulGenerationResult,
+} from "@/lib/project-queries";
 
-interface AgentState {
-  summary: string;
+const CREATE_WEBSITE_FUNCTION_ID = "create-website";
+
+type AgentRunState = {
+  sandboxId: string;
+  isSandboxNewlyCreated: boolean;
+  isRetry: boolean;
+  freshMode: boolean;
+  editMode: boolean;
+  isContinuation: boolean;
+  userPrompt: string;
+  previousMessages: Array<{
+    type?: string;
+    role?: string;
+    content?: unknown;
+  }>;
   files: { [path: string]: string };
-  validated: boolean;
-  sandboxId?: string;
-  enhancedPrompt?: string;
-  enhancementRetryCount: number;
-  maxEnhancementRetries: number;
-  needsEnhancement?: boolean;
-  decisionMade: boolean;
-  decisionError: boolean;
-  hasHistory: boolean;
+  summary: string;
+  sandboxUrl: string;
+};
+
+function createInitialAgentRunState(input: {
+  sandboxId: string;
+  isSandboxNewlyCreated: boolean;
+  isRetry: boolean;
+  userPrompt: string;
+}): AgentRunState {
+  return {
+    sandboxId: input.sandboxId,
+    isSandboxNewlyCreated: input.isSandboxNewlyCreated,
+    isRetry: input.isRetry,
+    freshMode: false,
+    editMode: false,
+    isContinuation: false,
+    userPrompt: input.userPrompt,
+    previousMessages: [],
+    files: {},
+    summary: "",
+    sandboxUrl: "",
+  };
 }
 
-const MAX_ENHANCEMENT_RETRIES = 2;
+/**
+ * Derives fresh / edit / continuation flags from retry + whether files exist.
+ */
+function deriveRunModes(input: {
+  hasExistingFiles: boolean;
+  isRetry: boolean;
+}): Pick<AgentRunState, "freshMode" | "editMode" | "isContinuation"> {
+  const hasExistingFiles = input.hasExistingFiles;
+  const isRetry = input.isRetry;
 
-// ---------------- Decision Agent ----------------
-const decisionAgent = createAgent<AgentState>({
-  name: "decision-agent",
-  description:
-    "Decides whether a request needs design enhancement or can go directly to coding",
-  system: DECISION_PROMPT,
-  model: gemini({
-    model: "gemini-2.0-flash",
-    defaultParameters: {},
-  }),
-  lifecycle: {
-    onResponse: async ({ result, network }) => {
-      try {
-        const lastAssistantMessageText = lastAssistantTextMessageContent(result)
-          ?.trim()
-          .toUpperCase();
-        if (network && lastAssistantMessageText) {
-          if (lastAssistantMessageText === "ENHANCE") {
-            network.state.data.needsEnhancement = true;
-            network.state.data.validated = false; // Need to run enhancement
-          } else if (lastAssistantMessageText === "CODE") {
-            network.state.data.needsEnhancement = false;
-            network.state.data.validated = true;
-          }
-          network.state.data.decisionMade = true;
-          network.state.data.decisionError = false;
-        }
-        return result;
-      } catch (error) {
-        // Mimic onError behavior
-        if (network) {
-          network.state.data.decisionError = true;
-          network.state.data.decisionMade = true;
-          network.state.data.needsEnhancement = false;
-          network.state.data.validated = true;
-        }
-        console.error("Decision agent error:", error);
-        return result;
-      }
-    },
-  },
-});
+  if (!hasExistingFiles && !isRetry) {
+    return { freshMode: true, editMode: false, isContinuation: false };
+  }
 
-// ---------------- Website Design Enhancement Agent ----------------
-const websiteDesignEnhancementAgent = createAgent<AgentState>({
-  name: "website-design-enhancer",
-  description: "Enhances user prompts with professional UI/UX design expertise",
-  system: WEBSITE_DESIGN_ENHANCEMENT_PROMPT,
-  model: gemini({
-    model: "gemini-2.0-flash",
-    defaultParameters: {},
-  }),
-  lifecycle: {
-    onResponse: async ({ result, network }) => {
-      try {
-        const lastAssistantMessageText =
-          lastAssistantTextMessageContent(result);
-        if (network && lastAssistantMessageText) {
-          // Check if enhancement was successful (has meaningful content)
-          if (
-            lastAssistantMessageText.length > 50 &&
-            lastAssistantMessageText.includes("-")
-          ) {
-            // Enhancement successful - store the enhanced prompt
-            network.state.data.enhancedPrompt = lastAssistantMessageText;
-            network.state.data.validated = true;
-          } else {
-            // Enhancement failed - check retry count
-            if (
-              network.state.data.enhancementRetryCount >=
-              network.state.data.maxEnhancementRetries
-            ) {
-              // Max retries reached - skip to coding agent with original prompt
-              network.state.data.validated = true;
-              network.state.data.enhancedPrompt = undefined; // Use original prompt
-            } else {
-              // Retry enhancement
-              network.state.data.enhancementRetryCount += 1;
-              network.state.data.validated = false;
-            }
-          }
-        }
-        return result;
-      } catch (error) {
-        // Mimic onError behavior - if website design enhancement throws error, handle to coding agent
-        if (network) {
-          network.state.data.validated = true;
-          network.state.data.enhancedPrompt = undefined; // Use original prompt
-        }
-        console.error("Website design enhancement agent error:", error);
-        return result;
-      }
-    },
-  },
-});
+  if (hasExistingFiles && isRetry) {
+    return { freshMode: false, editMode: false, isContinuation: true };
+  }
 
-// ---------------- Coding Agent ----------------
-const codeAgent = createAgent<AgentState>({
-  name: "code-agent",
-  description:
-    "An Exeprt coding agent that writes code in next.js, tailwind CSS, shadcn",
-  system: PROMPT,
-  model: openai({
-    model: "gpt-4.1",
-    defaultParameters: {},
-  }),
-  tools: [
-    // terminal tool
-    createTool({
-      name: "terminal",
-      description: "Use the terminal to run commands",
-      parameters: z.object({ command: z.string() }) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      handler: async ({ command }, { network }: Tool.Options<AgentState>) => {
-        const buffer = { stdout: "", stderr: "" };
-        try {
-          const sandbox = await getSandbox(network.state.data.sandboxId!);
-          const result = await sandbox.commands.run(command, {
-            onStdout: (data: string) => {
-              buffer.stdout += data;
-            },
-            onStderr: (data: string) => {
-              buffer.stderr += data;
-            },
-          });
-          return result.stdout;
-        } catch (e) {
-          console.error(
-            `Command failed: ${e}\nstdout: ${buffer.stdout}\nstderr: ${buffer.stderr}`
-          );
-          return `Command failed: ${e}\nstdout: ${buffer.stdout}\nstderr: ${buffer.stderr}`;
-        }
-      },
-    }),
-    // createOrUpdateFiles tool
-    createTool({
-      name: "createOrUpdateFiles",
-      description: "Create or update files in the sandbox",
-      parameters: z.object({
-        /* this is the output format*/
-        files: z.array(
-          z.object({
-            path: z.string(),
-            content: z.string(),
-          })
-        ),
-      }) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
-        try {
-          if (network) {
-            const updateFiles = network.state.data.files || {};
-            const sandbox = await getSandbox(network.state.data.sandboxId!);
-            for (const file of files) {
-              await sandbox.files.write(file.path, file.content);
-              updateFiles[file.path] = file.content;
-            }
-            if (typeof updateFiles === "object") {
-              network.state.data.files = updateFiles;
-            }
-          }
-        } catch (error) {
-          return "Error: " + error;
-        }
-      },
-    }),
-    // readFiles tool
-    createTool({
-      name: "readFiles",
-      description: "Read files from the sandbox",
-      parameters: z.object({
-        files: z.array(z.string()),
-      }) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      handler: async ({ files }, { network }: Tool.Options<AgentState>) => {
-        if (network) {
-          const sandbox = await getSandbox(network.state.data.sandboxId!);
-          const contents = [];
-          for (const file of files) {
-            const content = await sandbox.files.read(file);
-            contents.push({ path: file, content });
-          }
-          return JSON.stringify(contents);
-        }
-      },
-    }),
-  ],
-  lifecycle: {
-    onResponse: async ({ result, network }) => {
-      const lastAssistantMessageText = lastAssistantTextMessageContent(result);
-      if (lastAssistantMessageText && network) {
-        if (lastAssistantMessageText.includes("<task_summary>")) {
-          network.state.data.summary = lastAssistantMessageText;
-        }
-      }
-      return result;
-    },
-  },
-});
+  if (hasExistingFiles && !isRetry) {
+    return { freshMode: false, editMode: true, isContinuation: false };
+  }
 
-// ---------------- Fragment Title Generator ----------------
-const fragmentTitleGenerator = createAgent<AgentState>({
-  name: "fragment-title-generator",
-  description: "A fragment title generator",
-  system: FRAGMENT_TITLE_PROMPT,
-  model: gemini({
-    model: "gemini-2.0-flash",
-  }),
-});
+  // No files + retry (first-run failure): fresh-like context, prompt already set.
+  return { freshMode: true, editMode: false, isContinuation: false };
+}
 
-// ---------------- Response Generator ----------------
-const responseGenerator = createAgent<AgentState>({
-  name: "response-generator",
-  description: "A response generator",
-  system: RESPONSE_PROMPT,
-  model: gemini({
-    model: "gemini-2.0-flash",
-  }),
-});
+function extractOriginalProjectId(eventData: unknown): string | null {
+  if (!eventData || typeof eventData !== "object") return null;
+  const data = eventData as {
+    event?: { data?: { projectId?: string } };
+    function_id?: string;
+  };
+  const projectId = data.event?.data?.projectId;
+  return typeof projectId === "string" && projectId.length > 0
+    ? projectId
+    : null;
+}
+
+function isCreateWebsiteFailure(eventData: unknown): boolean {
+  if (!eventData || typeof eventData !== "object") return false;
+  const functionId = (eventData as { function_id?: string }).function_id;
+  return (
+    typeof functionId === "string" &&
+    functionId.includes(CREATE_WEBSITE_FUNCTION_ID)
+  );
+}
 
 export const codeAgentFunction = inngest.createFunction(
-  { id: "create-website" },
+  {
+    id: CREATE_WEBSITE_FUNCTION_ID,
+    retries: 5,
+  },
   { event: "test/create.website" },
   async ({ event, step }) => {
+    const projectId = event.data.projectId as string;
+    const isRetry = isRetryPayload(event.data.retry);
+    const userPrompt = String(event.data.value ?? "");
+
     try {
-      const sandboxId = await step.run("get-sandbox-id", async () => {
-        const sandbox = await Sandbox.create("vibe-three");
-        await sandbox.setTimeout(SANDBOX_TIMEOUT);
-        return sandbox.sandboxId;
-      });
-
-      const previousMessages = await step.run(
-        "get-previous-messages",
-        async () => {
-          const formattedMessages: Message[] = [];
-          const messages = await prisma.message.findMany({
-            where: {
-              projectId: event.data.projectId,
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 5,
-          });
-          for (const message of messages) {
-            formattedMessages.push({
-              type: "text",
-              role: message.role === "ASSISTANT" ? "assistant" : "user",
-              content: message.content,
-            });
-          }
-          return formattedMessages;
-        }
+      const sandboxSession = await step.run(
+        "get-or-create-sandbox",
+        async () => getOrCreateProjectSandbox({ projectId }),
       );
 
-      // Load existing files from previous fragment if available
-      const existingFiles = await step.run("load-existing-files", async () => {
-        const existingFragment = await prisma.fragment.findFirst({
-          where: {
-            message: {
-              projectId: event.data.projectId,
-            },
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
-
-        if (existingFragment?.files) {
-          return existingFragment.files as { [path: string]: string };
-        }
-        return {};
+      let agentState = createInitialAgentRunState({
+        sandboxId: sandboxSession.sandboxId,
+        isSandboxNewlyCreated: sandboxSession.isSandboxNewlyCreated,
+        isRetry,
+        userPrompt,
       });
 
-      const state = createState<AgentState>(
-        {
-          summary: "",
-          files: existingFiles, // Load existing files instead of empty object
-          validated: false,
-          sandboxId,
+      const existingFiles = await step.run(
+        "load-existing-files",
+        async () => findLatestActiveFragmentFiles(projectId),
+      );
+
+      const hasExistingFiles = Object.keys(existingFiles).length > 0;
+      const modes = deriveRunModes({ hasExistingFiles, isRetry });
+      agentState = { ...agentState, ...modes };
+
+      if (agentState.freshMode) {
+        agentState = {
+          ...agentState,
+          previousMessages: [],
+          files: {},
+        };
+      } else {
+        const previousMessages = await step.run(
+          "get-previous-messages",
+          async () => getRelevantMessages(projectId, agentState.userPrompt),
+        );
+
+        agentState = {
+          ...agentState,
+          previousMessages: previousMessages as AgentRunState["previousMessages"],
+          files: existingFiles,
+        };
+      }
+
+      if (
+        agentState.isSandboxNewlyCreated &&
+        Object.keys(agentState.files).length > 0
+      ) {
+        await step.run("hydrate-sandbox", async () =>
+          hydrateSandboxWithFragmentFiles({
+            sandboxId: agentState.sandboxId,
+            files: agentState.files,
+          }),
+        );
+      }
+
+      const codeModelIds = getModelChain("code");
+      let codeResult;
+      try {
+        codeResult = await runCodeToolLoop({
+          step,
+          sandboxId: agentState.sandboxId,
+          files: agentState.files,
+          historyMessages: agentState.previousMessages,
+          userPrompt: agentState.userPrompt,
           enhancedPrompt: undefined,
-          enhancementRetryCount: 0,
-          maxEnhancementRetries: MAX_ENHANCEMENT_RETRIES,
-          needsEnhancement: undefined,
-          decisionMade: false,
-          decisionError: false,
-          hasHistory: previousMessages.length > 1, // More than just the current user message
-        },
-        {
-          messages: previousMessages.reverse(),
-        }
-      );
-
-      const network = createNetwork<AgentState>({
-        name: "website-builder-network",
-        agents: [decisionAgent, websiteDesignEnhancementAgent, codeAgent],
-        maxIter: 15,
-        defaultState: state,
-        router: async ({ network }) => {
-          // First, make decision if not made yet
-          if (!network.state.data.decisionMade) {
-            return decisionAgent;
-          }
-
-          // If decision agent had an error, fallback to code agent
-          if (network.state.data.decisionError) {
-            network.state.data.validated = true;
-            return codeAgent;
-          }
-
-          // If decision says we need enhancement and haven't exceeded retries
-          if (
-            network.state.data.needsEnhancement &&
-            !network.state.data.validated &&
-            network.state.data.enhancementRetryCount <
-              network.state.data.maxEnhancementRetries
-          ) {
-            return websiteDesignEnhancementAgent;
-          }
-
-          // If validated (either enhanced or direct to coding) and no summary yet
-          if (network.state.data.validated && !network.state.data.summary) {
-            // Add enhanced prompt to the conversation before coding agent runs
-            if (network.state.data.enhancedPrompt) {
-              network.state.messages.push({
-                type: "text",
-                role: "user",
-                content: `ENHANCED DESIGN REQUIREMENTS:\n${network.state.data.enhancedPrompt}\n\nPlease implement this enhanced design specification.`,
-              });
-            }
-
-            // If we have existing files, add context about the current state
-            if (Object.keys(network.state.data.files).length > 0) {
-              network.state.messages.push({
-                type: "text",
-                role: "user",
-                content: `CONTEXT: You are working on an existing project. The current files are already created and available in the sandbox. Please modify the existing code according to the user's request.`,
-              });
-            }
-
-            return codeAgent;
-          }
-          return;
-        },
-      });
-
-      const result = await network.run(event.data.value, { state });
-
-      // Handle fragment title generator with error fallback
-      let fragmentTitleOutput;
-      try {
-        const fragmentResult = await fragmentTitleGenerator.run(
-          result.state.data.summary,
-          { state }
-        );
-        fragmentTitleOutput = fragmentResult.output;
-      } catch (error) {
-        // If fragment title generator shows error, use random slug like in project creation
-        fragmentTitleOutput = generateSlug(2, {
-          format: "title",
+          modelIds: codeModelIds,
         });
-      }
-
-      // Handle response generator with error fallback
-      let responseOutput;
-      try {
-        const responseResult = await responseGenerator.run(
-          result.state.data.summary,
-          { state }
-        );
-        responseOutput = responseResult.output;
       } catch (error) {
-        // If response generator throws error after retry, return success message
-        responseOutput =
-          "Great! Your query is ready. The code has been prepared and is ready to use.";
+        throwIfRateLimited(error);
+        throw error;
       }
 
-      const isError =
-        !result.state.data.summary ||
-        Object.keys(result.state.data.files || {}).length === 0;
+      agentState = {
+        ...agentState,
+        summary: codeResult.summary,
+        files: codeResult.files,
+      };
 
-      const sandboxUrl = await step.run("get-sandbox-url", async () => {
-        const sandbox = await getSandbox(sandboxId);
-        const host = sandbox.getHost(3000);
-        return `https://${host}`;
-      });
+      const isEmptyCodeResult =
+        !codeResult.summary ||
+        Object.keys(codeResult.files || {}).length === 0;
+
+      const sandboxUrl = await step.run("persist-sandbox-url", async () =>
+        persistProjectSandboxUrl({
+          projectId,
+          sandboxId: agentState.sandboxId,
+        }),
+      );
+      agentState = { ...agentState, sandboxUrl };
 
       await step.run("save-result", async () => {
-        if (isError) {
-          return await prisma.message.create({
-            data: {
-              content: "Something went wrong. Please try again",
-              role: "ASSISTANT",
-              type: "ERROR",
-              projectId: event.data.projectId,
-            },
+        if (isEmptyCodeResult) {
+          await markProjectGenerationStatus(projectId, "FAILED");
+          return createAssistantRetryMessage({
+            projectId,
+            errorDetails: toErrorDetails("Empty code result", {
+              code: "EMPTY_CODE_RESULT",
+              step: "save-result",
+            }),
           });
         }
-        return await prisma.message.create({
-          data: {
-            projectId: event.data.projectId,
-            content:
-              typeof responseOutput === "string"
-                ? responseOutput
-                : parseAgentOutput(responseOutput),
-            role: "ASSISTANT",
-            type: "RESULT",
-            fragment: {
-              create: {
-                sandboxUrl,
-                title:
-                  typeof fragmentTitleOutput === "string"
-                    ? fragmentTitleOutput
-                    : parseAgentOutput(fragmentTitleOutput),
-                files: result.state.data.files,
-              },
-            },
-          },
+
+        return saveSuccessfulGenerationResult({
+          projectId,
+          summary: codeResult.summary,
+          files: codeResult.files,
+          sandboxUrl,
+          fragmentTitle: sanitizeFragmentTitle(codeResult.summary),
         });
       });
 
       return {
         url: sandboxUrl,
-        title:
-          typeof fragmentTitleOutput === "string"
-            ? fragmentTitleOutput
-            : parseAgentOutput(fragmentTitleOutput),
-        files: result.state.data.files,
-        summary: result.state.data.summary,
+        title: sanitizeFragmentTitle(codeResult.summary),
+        files: codeResult.files,
+        summary: codeResult.summary,
       };
     } catch (error) {
-      // If everything fails, save error message to database
+      if (error instanceof NonRetriableError) {
+        throw error;
+      }
+      if (error instanceof RetryAfterError || isRateLimitError(error)) {
+        throwIfRateLimited(error);
+        throw error;
+      }
+
       console.error("Complete function failure:", error);
 
       await step.run("save-error-message", async () => {
-        return await prisma.message.create({
-          data: {
-            content: "Something went wrong. Please try again",
-            role: "ASSISTANT",
-            type: "ERROR",
-            projectId: event.data.projectId,
-          },
+        const storedSandboxId = await findProjectSandboxId(projectId);
+
+        if (storedSandboxId) {
+          try {
+            await persistProjectSandboxUrl({
+              projectId,
+              sandboxId: storedSandboxId,
+            });
+          } catch (urlError) {
+            console.warn(
+              "Could not persist sandbox URL after failure:",
+              urlError,
+            );
+          }
+        }
+
+        await markProjectGenerationStatus(projectId, "FAILED");
+        return createAssistantRetryMessage({
+          projectId,
+          errorDetails: toErrorDetails(error, { step: "save-error-message" }),
         });
       });
 
-      // Return error response
       throw error;
     }
-  }
+  },
+);
+
+/**
+ * When create-website exhausts retries, mark the project FAILED so the UI
+ * shows Retry (composer locked).
+ */
+export const handleGenerationFailed = inngest.createFunction(
+  { id: "generation-failed" },
+  { event: "inngest/function.failed" },
+  async ({ event, step }) => {
+    if (!isCreateWebsiteFailure(event.data)) return;
+
+    const projectId = extractOriginalProjectId(event.data);
+    if (!projectId) return;
+
+    await step.run("mark-failed", async () => {
+      await markProjectGenerationStatus(projectId, "FAILED");
+    });
+  },
+);
+
+/**
+ * When create-website is cancelled, mark CANCELLED. FE maps this to the same
+ * Retry button + retry:true path as FAILED.
+ */
+export const handleGenerationCancelled = inngest.createFunction(
+  { id: "generation-cancelled" },
+  { event: "inngest/function.cancelled" },
+  async ({ event, step }) => {
+    if (!isCreateWebsiteFailure(event.data)) return;
+
+    const projectId = extractOriginalProjectId(event.data);
+    if (!projectId) return;
+
+    await step.run("mark-cancelled", async () => {
+      await markProjectGenerationStatus(projectId, "CANCELLED");
+    });
+  },
 );

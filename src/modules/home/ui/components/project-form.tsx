@@ -58,7 +58,7 @@ export function ProjectForm() {
         window.history.replaceState(
           null,
           "",
-          next ? `/?${next}` : window.location.pathname
+          next ? `/?${next}` : window.location.pathname,
         );
       }
     }, 120);
@@ -136,10 +136,10 @@ export function ProjectForm() {
           onSubmit={form.handleSubmit(onSubmit)}
           className={cn(
             "relative rounded-xl border-2 border-border bg-card p-3 shadow-md transition-[box-shadow,transform]",
-            isFocused && "shadow-lg"
+            isFocused && "shadow-lg",
           )}
         >
-          <FormwField
+          <FormField
             control={form.control}
             name="value"
             render={({ field }) => (

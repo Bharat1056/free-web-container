@@ -120,37 +120,41 @@ export const FileExplorer = ({ files }: Props) => {
   }, [selectedFile, files]);
 
   return (
-    <ResizablePanelGroup direction="horizontal">
-      <ResizablePanel defaultSize={30} minSize={20} className="bg-sidebar">
+    <ResizablePanelGroup direction="horizontal" className="h-full">
+      <ResizablePanel
+        defaultSize={30}
+        minSize={20}
+        className="border-r-2 border-border bg-sidebar"
+      >
         <TreeView
           data={treeData}
           value={selectedFile}
           onSelect={handleSelect}
         />
       </ResizablePanel>
-      <ResizableHandle className="hover:bg-primary transition-colors" />
+      <ResizableHandle className="w-0.5 bg-border transition-colors hover:bg-primary" />
       <ResizablePanel defaultSize={70} minSize={50}>
         {selectedFile && files[selectedFile] ? (
-          <div className="h-full w-full flex flex-col">
-            <div className="border-b bg-sidebar px-4 py-2 flex justify-between items-center gap-x-2">
+          <div className="flex h-full w-full flex-col">
+            <div className="flex items-center justify-between gap-x-2 border-b-2 border-border bg-sidebar px-3 py-2">
               <FileBreadcrumb path={selectedFile} />
               <Hint text="Copy to clipboard" side="bottom">
                 <Button
                   variant="outline"
                   size="icon"
-                  className="ml-auto"
+                  className="ml-auto size-8"
                   onClick={handleCopy}
                   disabled={copied}
                 >
                   {copied ? (
-                    <CheckIcon className="size-4" />
+                    <CheckIcon className="size-3.5" />
                   ) : (
-                    <CopyIcon className="size-4" />
+                    <CopyIcon className="size-3.5" />
                   )}
                 </Button>
               </Hint>
             </div>
-            <div className="flex-1 overflow-auto">
+            <div className="min-h-0 flex-1 overflow-auto">
               <CodeView
                 code={files[selectedFile]}
                 language={getLanguageFromExtension(selectedFile)}
@@ -158,8 +162,8 @@ export const FileExplorer = ({ files }: Props) => {
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            Select a file to view it&apos;s contents
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Select a file to view its contents
           </div>
         )}
       </ResizablePanel>
