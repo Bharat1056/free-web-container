@@ -14,7 +14,9 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  messages Message[]
+  messages   Message[]
+  codeChunks CodeChunk[]
+  codeEdges  CodeEdge[]
 
 }
 
@@ -59,4 +61,43 @@ model Usage {
   key String @id
   points Int
   expire DateTime?
+}
+
+/**
+ * AST / line chunks of the project's latest codebase for hybrid retrieval.
+ * Scoped by projectId only (not per historical fragment).
+ */
+model CodeChunk {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  path        String
+  startLine   Int
+  endLine     Int
+  content     String
+  contentHash String
+  embedding   Float[]  @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([projectId, path, startLine, endLine])
+  @@index([projectId])
+  @@index([projectId, path])
+  @@index([projectId, contentHash])
+}
+
+/**
+ * Import edges from madge (file A imports file B) for related-file expansion.
+ */
+model CodeEdge {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromPath  String
+  toPath    String
+  kind      String  @default("IMPORTS")
+
+  @@unique([projectId, fromPath, toPath, kind])
+  @@index([projectId, fromPath])
+  @@index([projectId, toPath])
 }

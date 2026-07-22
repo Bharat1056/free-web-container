@@ -8,7 +8,10 @@
     "start": "next start",
     "inngest": "npx inngest-cli@latest dev",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/lib/code-retrieval.test.ts",
+    "postinstall": "prisma generate",
+    "coupon": "tsx scripts/create-coupon.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.32.0",
@@ -17,7 +20,10 @@
     "@hookform/resolvers": "^3.10.0",
     "@inngest/agent-kit": "^0.9.0",
     "@langchain/core": "^0.3.75",
-    "@langchain/groq": "^0.2.3",
+    "@langchain/openai": "^0.6.17",
+    "@llamaindex/core": "^0.6.22",
+    "@llamaindex/env": "^0.1.30",
+    "@llamaindex/node-parser": "^2.0.22",
     "@prisma/client": "^6.15.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -60,6 +66,7 @@
     "inngest-cli": "^1.0.1",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.542.0",
+    "madge": "^8.0.0",
     "next": "15.5.2",
     "next-themes": "^0.4.6",
     "prismjs": "^1.30.0",
@@ -77,12 +84,15 @@
     "sonner": "^2.0.7",
     "superjson": "^2.2.2",
     "tailwind-merge": "^3.3.1",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-typescript": "^0.23.2",
     "vaul": "^1.1.2",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/madge": "^5.0.3",
     "@types/node": "^20",
     "@types/prismjs": "^1.26.5",
     "@types/react": "^19",
