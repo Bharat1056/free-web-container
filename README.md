@@ -292,7 +292,27 @@ npm run dev
 npm run inngest
 ```
 
+After `npm install`, Husky installs Git hooks automatically via the `prepare` script.
 
+### Git hooks
+
+| Hook | Runs | Purpose |
+| ---- | ---- | ------- |
+| `pre-commit` | `lint-staged` → ESLint `--fix` on staged JS/TS files | Fast local gate before each commit |
+| `commit-msg` | `commitlint` | Enforce [Conventional Commits](https://www.conventionalcommits.org/) |
+| `pre-push` | `typecheck` + `test` | Catch type and unit-test failures before remote push |
+
+Commit messages must look like `type(scope): subject`, for example:
+
+```text
+feat: add commit message validation
+fix(auth): handle expired sessions
+chore: bump dependencies
+```
+
+Allowed types include `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, and `revert`.
+
+Run the full local suite anytime with `npm run check` (`lint` + `typecheck` + `test`).
 
 ### Scripts
 
@@ -302,8 +322,11 @@ npm run inngest
 | `npm run dev`                   | Next.js dev server (Turbopack)              |
 | `npm run inngest`               | Inngest dev server                          |
 | `npm run build`                 | Production build                            |
+| `npm run lint`                  | ESLint across the repo                      |
+| `npm run lint:fix`             | ESLint with auto-fix                       |
 | `npm run typecheck`             | TypeScript check                            |
 | `npm run test`                  | Unit tests (code retrieval, shadcn context) |
+| `npm run check`                 | lint + typecheck + test                     |
 | `npm run sync:tree-sitter-wasm` | Sync tree-sitter WASM assets                |
 
 
