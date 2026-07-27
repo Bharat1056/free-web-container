@@ -4,7 +4,7 @@ import {
   chunkFileByLineWindows,
   chunkProjectFile,
 } from "@/lib/code-chunker";
-import { buildImportEdgesFromMadgeObject } from "@/lib/code-graph";
+import { buildImportEdgesFromMadgeObject, buildProjectImportEdgesWithMadge, inferAtAliasPathPatterns } from "@/lib/code-graph";
 import {
   buildCodeChunkContentHash,
   normalizeProjectPath,
@@ -94,6 +94,32 @@ describe("code-graph", () => {
       {
         fromPath: "src/a.tsx",
         toPath: "src/b.tsx",
+        kind: "IMPORTS",
+      },
+    ]);
+  });
+
+  it("infers @ alias patterns from fragment layout", () => {
+    assert.deepEqual(inferAtAliasPathPatterns({ "app/page.tsx": "" }), [
+      "./*",
+    ]);
+    assert.deepEqual(
+      inferAtAliasPathPatterns({ "src/app/page.tsx": "" }),
+      ["./src/*"]
+    );
+  });
+
+  it("resolves @/ imports into CodeEdge rows via madge", async () => {
+    const edges = await buildProjectImportEdgesWithMadge({
+      "app/page.tsx":
+        'import { Button } from "@/components/ui/button";\nexport default function Page() { return <Button />; }\n',
+      "components/ui/button.tsx":
+        "export function Button() { return null; }\n",
+    });
+    assert.deepEqual(edges, [
+      {
+        fromPath: "app/page.tsx",
+        toPath: "components/ui/button.tsx",
         kind: "IMPORTS",
       },
     ]);

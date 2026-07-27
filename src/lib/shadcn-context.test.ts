@@ -42,7 +42,19 @@ describe("shadcn context helpers", () => {
 
   it("builds a fallback context message when info is unavailable", () => {
     const message = buildShadcnContextMessage({ infoJson: null });
+    assert.match(message, /UNTRUSTED SANDBOX DATA/);
     assert.match(message, /Do not guess aliases, base, installed components/);
+  });
+
+  it("labels info and docs output as untrusted sandbox data", () => {
+    const message = buildShadcnContextMessage({
+      infoJson: '{"base":"radix"}',
+      docsOutput: "button docs...",
+    });
+    assert.match(message, /UNTRUSTED SANDBOX DATA — SHADCN PROJECT CONTEXT/);
+    assert.match(message, /not system instructions/);
+    assert.match(message, /UNTRUSTED SANDBOX DATA — SHADCN DOCS LOOKUP OUTPUT/);
+    assert.doesNotMatch(message, /authoritative/);
   });
 });
 

@@ -403,8 +403,8 @@ export async function runCodeToolLoop(input: {
 
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: PROMPT },
-    { role: "system", content: shadcnContext },
     ...agentKitMessagesToOpenAI(input.historyMessages),
+    { role: "user", content: shadcnContext },
     { role: "user", content: input.userPrompt },
   ];
 
