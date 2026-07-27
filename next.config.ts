@@ -3,9 +3,15 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   /**
+   * Ensure vendored tree-sitter WASM grammars ship with standalone builds.
+   */
+  outputFileTracingIncludes: {
+    "/*": ["./resources/tree-sitter/**/*"],
+  },
+  /**
    * Keep tooling packages out of the Next bundle.
    * madge pulls optional Vue/template engines that break webpack resolution;
-   * tree-sitter uses native bindings that must load from node_modules at runtime.
+   * web-tree-sitter loads WASM from disk at runtime.
    */
   serverExternalPackages: [
     "madge",
@@ -15,12 +21,10 @@ const nextConfig: NextConfig = {
     "@vue/compiler-sfc",
     "filing-cabinet",
     "module-definition",
-    "tree-sitter",
-    "tree-sitter-typescript",
+    "web-tree-sitter",
     "@llamaindex/node-parser",
     "@llamaindex/core",
     "@llamaindex/env",
-    "razorpay",
   ],
   images: {
     remotePatterns: [

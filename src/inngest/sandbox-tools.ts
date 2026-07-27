@@ -8,13 +8,18 @@ export type FilePartial = {
   content: string;
 };
 
+export type ShadcnGroundingTracker = {
+  groundedComponents: Set<string>;
+};
+
 /** OpenAI function-tool schemas for terminal, createOrUpdateFiles, and readFiles. */
 export const OPENAI_CODE_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
       name: "terminal",
-      description: "Use the terminal to run commands",
+      description:
+        "Use the terminal to run commands. For shadcn work prefer: cd /home/user && npx shadcn@latest info --json, search @shadcn -q \"...\", docs <components>, add <components> --yes. For non-shadcn dependencies use npm install <package> --yes.",
       parameters: {
         type: "object",
         properties: {
@@ -193,6 +198,56 @@ export type ToolExecutionResult = {
   fileMap: SandboxFileMap;
 };
 
+function normalizeShadcnComponentName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^@shadcn\//, "")
+    .replace(/^components\/ui\//, "")
+    .replace(/\.(t|j)sx?$/, "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop() ?? "";
+}
+
+export function extractGroundedShadcnComponentsFromCommand(
+  command: string
+): string[] {
+  const docsOrAddMatch = command.match(
+    /npx\s+shadcn@latest\s+(docs|add)\s+([^\n]+)/i
+  );
+  if (!docsOrAddMatch) return [];
+
+  return docsOrAddMatch[2]
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(
+      (part) =>
+        part &&
+        !part.startsWith("-") &&
+        !["&&", "||", ";"].includes(part) &&
+        !part.startsWith('"') &&
+        !part.startsWith("'")
+    )
+    .map(normalizeShadcnComponentName)
+    .filter(Boolean);
+}
+
+export function extractGroundedShadcnComponentsFromReadPaths(
+  paths: string[]
+): string[] {
+  return paths
+    .filter((path) => /components\/ui\/.+\.(t|j)sx?$/i.test(path.replace(/\\/g, "/")))
+    .map(normalizeShadcnComponentName)
+    .filter(Boolean);
+}
+
+export function detectImportedShadcnComponents(content: string): string[] {
+  return [...content.matchAll(/@\/components\/ui\/([a-z0-9-]+)/gi)]
+    .map((match) => normalizeShadcnComponentName(match[1] ?? ""))
+    .filter(Boolean);
+}
+
 /**
  * Parses a model tool call and dispatches to terminal, createOrUpdateFiles, or readFiles.
  *
@@ -206,7 +261,8 @@ export async function executeSandboxTool(
   toolName: string,
   rawArguments: string,
   sandboxId: string,
-  fileMap: SandboxFileMap
+  fileMap: SandboxFileMap,
+  tracker?: ShadcnGroundingTracker
 ): Promise<ToolExecutionResult> {
   let args: unknown;
   try {
@@ -228,6 +284,9 @@ export async function executeSandboxTool(
         : "";
     if (!command) {
       return { content: "Error: terminal requires a command string", fileMap };
+    }
+    for (const component of extractGroundedShadcnComponentsFromCommand(command)) {
+      tracker?.groundedComponents.add(component);
     }
     return { content: await runTerminal(sandboxId, command), fileMap };
   }
@@ -251,7 +310,19 @@ export async function executeSandboxTool(
       fileMap,
       files
     );
-    return { content: result, fileMap: updated };
+    const importedComponents = files.flatMap((file) =>
+      detectImportedShadcnComponents(file.content)
+    );
+    const missingGrounding = [...new Set(importedComponents)].filter(
+      (component) => !tracker?.groundedComponents.has(component)
+    );
+    const groundingNote =
+      missingGrounding.length > 0
+        ? `\nGrounding warning: these shadcn imports were written before they were grounded with docs/readFiles/add in this turn: ${missingGrounding.join(
+            ", "
+          )}. Run shadcn docs/readFiles/add for them before the next edit.`
+        : "";
+    return { content: result + groundingNote, fileMap: updated };
   }
 
   if (toolName === "readFiles") {
@@ -267,6 +338,9 @@ export async function executeSandboxTool(
         content: "Error: readFiles requires a non-empty files array",
         fileMap,
       };
+    }
+    for (const component of extractGroundedShadcnComponentsFromReadPaths(paths)) {
+      tracker?.groundedComponents.add(component);
     }
     return { content: await readFiles(sandboxId, paths), fileMap };
   }

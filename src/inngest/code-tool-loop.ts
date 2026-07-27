@@ -11,6 +11,7 @@ import {
 import {
   OPENAI_CODE_TOOLS,
   executeSandboxTool,
+  type ShadcnGroundingTracker,
   writePartialsToSandbox,
   type SandboxFileMap,
 } from "@/inngest/sandbox-tools";
@@ -22,6 +23,7 @@ import {
   MAX_CODE_CONTINUATION_ATTEMPTS,
   MAX_CODE_ITERS,
 } from "@/constants";
+import { loadShadcnContext } from "@/lib/shadcn-context";
 import { createOpenAiClient } from "@/lib/llm";
 
 /** Inngest step subset — kept loose because step.run Jsonifies return values. */
@@ -391,11 +393,18 @@ export async function runCodeToolLoop(input: {
   let files = { ...input.files };
   /** Paths written by a completed createOrUpdateFiles tool call (not checkpoints). */
   const knownCompletePaths = new Set(Object.keys(files));
+  const shadcnGrounding: ShadcnGroundingTracker = {
+    groundedComponents: new Set(),
+  };
   let nudgedForSummary = false;
+  const shadcnContext = await input.step.run("load-shadcn-context", async () =>
+    loadShadcnContext(input.sandboxId, input.userPrompt)
+  );
 
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: PROMPT },
     ...agentKitMessagesToOpenAI(input.historyMessages),
+    { role: "user", content: shadcnContext },
     { role: "user", content: input.userPrompt },
   ];
 
@@ -521,7 +530,8 @@ export async function runCodeToolLoop(input: {
               toolName,
               toolArgs,
               input.sandboxId,
-              files
+              files,
+              shadcnGrounding
             );
           } catch (error) {
             throwIfRateLimited(error);

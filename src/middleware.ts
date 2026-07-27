@@ -10,11 +10,12 @@ const publicPaths = [
   "/api/inngest",
   "/api/trpc",
   "/api/razorpay",
+  "/api/health",
 ];
 
 function isPublicPath(pathname: string) {
   return publicPaths.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
 }
 

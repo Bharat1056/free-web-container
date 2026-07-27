@@ -42,3 +42,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# tree-sitter WASM (copied by postinstall from npm packages)
+/resources/tree-sitter/*.wasm
