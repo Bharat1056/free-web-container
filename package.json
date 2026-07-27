@@ -9,7 +9,9 @@
     "inngest": "npx inngest-cli@latest dev",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "postinstall": "prisma generate",
+    "test": "tsx --test src/lib/code-retrieval.test.ts src/lib/shadcn-context.test.ts",
+    "postinstall": "prisma generate && node scripts/sync-tree-sitter-wasm.mjs",
+    "sync:tree-sitter-wasm": "node scripts/sync-tree-sitter-wasm.mjs",
     "coupon": "tsx scripts/create-coupon.ts"
   },
   "dependencies": {
@@ -18,6 +20,12 @@
     "@inngest/agent-kit": "^0.13.2",
     "@langchain/core": "^0.3.75",
     "@langchain/openai": "^0.6.17",
+    "@llamaindex/core": "^0.6.22",
+    "@llamaindex/env": "^0.1.30",
+    "@llamaindex/node-parser": "^2.0.22",
+    "madge": "^8.0.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.24.7",
     "@prisma/client": "^6.15.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -85,6 +93,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/madge": "^5.0.3",
     "@types/node": "^20",
     "@types/prismjs": "^1.26.5",
     "@types/react": "^19",
