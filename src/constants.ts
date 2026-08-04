@@ -1,3 +1,5 @@
+import { isProdMode } from "@/lib/app-mode";
+
 /** How many of the most recent messages to always keep for conversational continuity. */
 export const RECENT_ANCHOR = 2;
 
@@ -110,10 +112,8 @@ export const GENERATION_STALE_MS = 5 * 60 * 1000;
 /**
  * Model registry keyed by responsibility.
  *
- * - `primary` is the default model used in production.
- * - `fallbacks` are tried in order when the primary fails (where runtime
- *   fallback is supported), or used as a known-good list for ops overrides.
- * - All text-generation roles use OpenAI. Embeddings alone use Gemini.
+ * - Non-prod (`APP_MODE` unset): OpenAI for text generation, Gemini embeddings.
+ * - Prod (`APP_MODE=prod`): Gemini for code + validation + embeddings (BYOK).
  * - Override any role at deploy time with `MODEL_<ROLE>` env vars, e.g.
  *   `MODEL_CODE=gpt-4.1`.
  */
@@ -138,6 +138,25 @@ export const MODELS = {
   },
 } as const;
 
+/** Prod BYOK model chains (Gemini). */
+export const PROD_MODELS = {
+  code: {
+    provider: "gemini",
+    primary: "gemini-2.5-pro",
+    fallbacks: ["gemini-2.5-flash"],
+  },
+  promptValidation: {
+    provider: "gemini",
+    primary: "gemini-2.5-flash",
+    fallbacks: ["gemini-2.5-pro"],
+  },
+  embedding: {
+    provider: "gemini",
+    primary: "gemini-embedding-001",
+    fallbacks: ["gemini-embedding-2", "gemini-embedding-2-preview"],
+  },
+} as const;
+
 export type ModelRole = keyof typeof MODELS;
 
 /** Env var name for a given model role, e.g. `decision` → `MODEL_DECISION`. */
@@ -147,9 +166,11 @@ export function modelEnvKey(role: ModelRole): string {
 
 /**
  * Ordered model ids for a role: optional env override first, then primary, then fallbacks.
+ * Uses {@link PROD_MODELS} when `APP_MODE=prod`.
  */
 export function getModelChain(role: ModelRole): string[] {
-  const { primary, fallbacks } = MODELS[role];
+  const registry = isProdMode() ? PROD_MODELS : MODELS;
+  const { primary, fallbacks } = registry[role];
   const override = process.env[modelEnvKey(role)]?.trim();
 
   if (override) {

@@ -1,6 +1,7 @@
 import { inngest } from "@/inngest/client";
 import prisma from "@/lib/db";
 import { embedText } from "@/lib/embeddings";
+import { runWithGeminiKey } from "@/lib/gemini-key-context";
 import { reconcileProjectGenerationStatus } from "@/inngest/run-status";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { z } from "zod";
@@ -8,6 +9,10 @@ import { generateSlug } from "random-word-slugs";
 import { TRPCError } from "@trpc/server";
 import { consumeUsage } from "@/lib/usage";
 import { validatePrompt } from "@/modules/validation/server/validate-prompt";
+import {
+  assertGeminiKeyIfProd,
+  getUserGeminiApiKey,
+} from "@/lib/user-gemini-key";
 
 export const projectsRouter = createTRPCRouter({
   getOne: protectedProcedure
@@ -56,65 +61,70 @@ export const projectsRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      try {
-        await consumeUsage();
-      } catch (error) {
-        if (error instanceof Error) {
+      await assertGeminiKeyIfProd(ctx.auth.userId);
+      const geminiApiKey = await getUserGeminiApiKey(ctx.auth.userId);
+
+      return runWithGeminiKey(geminiApiKey ?? undefined, async () => {
+        try {
+          await consumeUsage();
+        } catch (error) {
+          if (error instanceof Error) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: error.message,
+            });
+          } else {
+            throw new TRPCError({
+              code: "TOO_MANY_REQUESTS",
+              message: "You have run out of credits",
+            });
+          }
+        }
+
+        const validation = await validatePrompt(input.value);
+        if (!validation.isValid) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: error.message,
-          });
-        } else {
-          throw new TRPCError({
-            code: "TOO_MANY_REQUESTS",
-            message: "You have run out of credits",
+            message: "BAD_PROMPT",
           });
         }
-      }
 
-      const validation = await validatePrompt(input.value);
-      if (!validation.isValid) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "BAD_PROMPT",
-        });
-      }
+        const embedding = await embedText(input.value);
 
-      const embedding = await embedText(input.value);
-
-      const createdProject = await prisma.project.create({
-        data: {
-          userId: ctx.auth.userId,
-          name: generateSlug(2, {
-            format: "kebab",
-          }),
-          generationStatus: "GENERATING",
-          generationStartedAt: new Date(),
-          messages: {
-            create: {
-              content: input.value,
-              role: "USER",
-              type: "RESULT",
-              embedding,
+        const createdProject = await prisma.project.create({
+          data: {
+            userId: ctx.auth.userId,
+            name: generateSlug(2, {
+              format: "kebab",
+            }),
+            generationStatus: "GENERATING",
+            generationStartedAt: new Date(),
+            messages: {
+              create: {
+                content: input.value,
+                role: "USER",
+                type: "RESULT",
+                embedding,
+              },
             },
           },
-        },
-      });
+        });
 
-      const { ids } = await inngest.send({
-        name: "test/create.website",
-        data: {
-          value: input.value,
-          projectId: createdProject.id,
-          retry: false,
-        },
-      });
+        const { ids } = await inngest.send({
+          name: "test/create.website",
+          data: {
+            value: input.value,
+            projectId: createdProject.id,
+            retry: false,
+          },
+        });
 
-      return prisma.project.update({
-        where: { id: createdProject.id },
-        data: {
-          inngestEventId: ids[0] ?? null,
-        },
+        return prisma.project.update({
+          where: { id: createdProject.id },
+          data: {
+            inngestEventId: ids[0] ?? null,
+          },
+        });
       });
     }),
 });

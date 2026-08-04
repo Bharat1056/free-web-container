@@ -36,6 +36,9 @@ model User {
   plan          Plan      @default(FREE)
   planExpiresAt DateTime?
   couponCode    String?
+  geminiApiKeyEncrypted String?
+  geminiApiKeyLast4     String?
+  geminiApiKeyUpdatedAt DateTime?
 
   sessions Session[]
   accounts Account[]

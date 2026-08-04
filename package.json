@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/lib/code-retrieval.test.ts src/lib/shadcn-context.test.ts",
+    "test": "tsx --test src/lib/code-retrieval.test.ts src/lib/shadcn-context.test.ts src/lib/user-secrets.test.ts",
     "check": "npm run lint && npm run typecheck && npm run test",
     "postinstall": "prisma generate && node scripts/sync-tree-sitter-wasm.mjs",
     "sync:tree-sitter-wasm": "node scripts/sync-tree-sitter-wasm.mjs",

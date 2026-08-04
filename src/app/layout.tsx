@@ -10,6 +10,7 @@ import { TRPCReactProvider } from "@/trpc/client";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { GeminiKeyGateProvider } from "@/modules/user-settings/ui/gemini-key-gate";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -56,8 +57,10 @@ export default function RootLayout({
               disableTransitionOnChange
               themes={["light", "dark"]}
             >
-              {children}
-              <Toaster />
+              <GeminiKeyGateProvider>
+                {children}
+                <Toaster />
+              </GeminiKeyGateProvider>
             </ThemeProvider>
           </ErrorBoundary>
         </body>

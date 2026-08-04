@@ -92,6 +92,8 @@ When generation fails or is cancelled, status becomes `FAILED` or `CANCELLED`. T
 
 ## Code generation
 
+
+
 ### Tool loop (`runCodeToolLoop`)
 
 The core agent is an OpenAI chat completion with function tools, executed inside durable Inngest steps:
@@ -107,11 +109,11 @@ The core agent is an OpenAI chat completion with function tools, executed inside
 **Models** (configurable via `MODEL_CODE`, `MODEL_PROMPT_VALIDATION`):
 
 
-| Role              | Default                    | Provider |
-| ----------------- | -------------------------- | -------- |
-| Code              | `gpt-4.1` → `gpt-4.1-mini` | OpenAI   |
-| Prompt validation | `gpt-4.1-mini` → `gpt-4.1` | OpenAI   |
-| Embeddings        | `gemini-embedding-001`     | Gemini   |
+| Role              | Default (non-prod)         | Provider | Prod (`APP_MODE=prod`)                            |
+| ----------------- | -------------------------- | -------- | ------------------------------------------------- |
+| Code              | `gpt-4.1` → `gpt-4.1-mini` | OpenAI   | `gemini-2.5-pro` → `gemini-2.5-flash` (user BYOK) |
+| Prompt validation | `gpt-4.1-mini` → `gpt-4.1` | OpenAI   | `gemini-2.5-flash` → `gemini-2.5-pro` (user BYOK) |
+| Embeddings        | `gemini-embedding-001`     | Gemini   | Same models via user Gemini key                   |
 
 
 The system prompt (`src/prompt.ts`) combines sandbox rules (`src/prompts/sandbox-code.ts`) with shadcn usage guidance (`src/prompts/shadcn-skill.ts`). At loop start, `loadShadcnContext` runs `npx shadcn@latest info --json` in the sandbox and injects component docs for anything referenced in the user prompt.
@@ -264,21 +266,23 @@ npx prisma db push
 ### Environment variables
 
 
-| Variable                                    | Required    | Purpose                                                          |
-| ------------------------------------------- | ----------- | ---------------------------------------------------------------- |
-| `DATABASE_URL`                              | Yes         | PostgreSQL connection                                            |
-| `OPENAI_API_KEY`                            | Yes         | Code generation and prompt validation                            |
-| `E2B_API_KEY`                               | Yes         | Sandbox creation                                                 |
-| `BETTER_AUTH_SECRET`                        | Yes         | Session signing                                                  |
-| `BETTER_AUTH_URL`                           | Yes         | Auth base URL (e.g. `http://localhost:3000`)                     |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes         | Google sign-in                                                   |
-| `NEXT_PUBLIC_APP_URL`                       | Yes         | Public app URL for tRPC client                                   |
-| `GEMINI_API_KEY`                            | Recommended | Message and code embeddings (RAG degrades gracefully without it) |
-| `INNGEST_DEV`                               | Local dev   | Set to `1` to use the Inngest dev server                         |
-| `INNGEST_BASE_URL`                          | Local dev   | Default `http://localhost:8288`                                  |
-| `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` | Production  | Inngest Cloud                                                    |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`   | Optional    | Pro plan checkout                                                |
-| `MODEL_CODE` / `MODEL_PROMPT_VALIDATION`    | Optional    | Override model chains                                            |
+| Variable                                    | Required   | Purpose                                                           |
+| ------------------------------------------- | ---------- | ----------------------------------------------------------------- |
+| `DATABASE_URL`                              | Yes        | PostgreSQL connection                                             |
+| `OPENAI_API_KEY`                            | Non-prod   | Code generation and prompt validation (when `APP_MODE` ≠ `prod`)  |
+| `E2B_API_KEY`                               | Yes        | Sandbox creation                                                  |
+| `BETTER_AUTH_SECRET`                        | Yes        | Session signing                                                   |
+| `BETTER_AUTH_URL`                           | Yes        | Auth base URL (e.g. `http://localhost:3000`)                      |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes        | Google sign-in                                                    |
+| `NEXT_PUBLIC_APP_URL`                       | Yes        | Public app URL for tRPC client                                    |
+| `GEMINI_API_KEY`                            | Non-prod   | Embeddings when not using per-user BYOK                           |
+| `APP_MODE`                                  | Optional   | Set to `prod` to require per-user Gemini BYOK for generation      |
+| `ENCRYPTION_KEY`                            | Prod BYOK  | Required when `APP_MODE=prod` — encrypts user Gemini keys at rest |
+| `INNGEST_DEV`                               | Local dev  | Set to `1` to use the Inngest dev server                          |
+| `INNGEST_BASE_URL`                          | Local dev  | Default `http://localhost:8288`                                   |
+| `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` | Production | Inngest Cloud                                                     |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`   | Optional   | Pro plan checkout                                                 |
+| `MODEL_CODE` / `MODEL_PROMPT_VALIDATION`    | Optional   | Override model chains                                             |
 
 
 
@@ -296,11 +300,13 @@ After `npm install`, Husky installs Git hooks automatically via the `prepare` sc
 
 ### Git hooks
 
-| Hook | Runs | Purpose |
-| ---- | ---- | ------- |
-| `pre-commit` | `lint-staged` → ESLint `--fix` on staged JS/TS files | Fast local gate before each commit |
-| `commit-msg` | `commitlint` | Enforce [Conventional Commits](https://www.conventionalcommits.org/) |
-| `pre-push` | `typecheck` + `test` | Catch type and unit-test failures before remote push |
+
+| Hook         | Runs                                                 | Purpose                                                              |
+| ------------ | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| `pre-commit` | `lint-staged` → ESLint `--fix` on staged JS/TS files | Fast local gate before each commit                                   |
+| `commit-msg` | `commitlint`                                         | Enforce [Conventional Commits](https://www.conventionalcommits.org/) |
+| `pre-push`   | `typecheck` + `test`                                 | Catch type and unit-test failures before remote push                 |
+
 
 Commit messages must look like `type(scope): subject`, for example:
 
@@ -323,7 +329,7 @@ Run the full local suite anytime with `npm run check` (`lint` + `typecheck` + `t
 | `npm run inngest`               | Inngest dev server                          |
 | `npm run build`                 | Production build                            |
 | `npm run lint`                  | ESLint across the repo                      |
-| `npm run lint:fix`             | ESLint with auto-fix                       |
+| `npm run lint:fix`              | ESLint with auto-fix                        |
 | `npm run typecheck`             | TypeScript check                            |
 | `npm run test`                  | Unit tests (code retrieval, shadcn context) |
 | `npm run check`                 | lint + typecheck + test                     |

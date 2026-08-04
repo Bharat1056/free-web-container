@@ -6,7 +6,7 @@ import TextareaAutoSize from "react-textarea-autosize";
 import { z } from "zod";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUpIcon, Loader2Icon } from "lucide-react";
+import { ArrowUpIcon, Loader2Icon, KeyRoundIcon } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ import { PROJECT_TEMPLATES } from "@/modules/home/constants";
 import { isTRPCClientError } from "@trpc/client";
 import { useSession } from "@/lib/auth-client";
 import { showMutationErrorToast } from "@/lib/mutation-error-toast";
+import { useGeminiKeyGateOptional } from "@/modules/user-settings/ui/gemini-key-gate";
 
 const formSchema = z.object({
   value: z
@@ -34,6 +35,8 @@ export function ProjectForm() {
   const queryClient = useQueryClient();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
+  const { isConfigured, isRequired, openModal } = useGeminiKeyGateOptional();
+  const needsGeminiKey = Boolean(user) && isRequired && !isConfigured;
 
   const goSignIn = () => {
     router.push("/sign-in?callbackUrl=/?compose=1");
@@ -76,6 +79,13 @@ export function ProjectForm() {
     onError: (error) => {
       if (isTRPCClientError(error)) {
         if (
+          error.data?.code === "PRECONDITION_FAILED" &&
+          error.message === "GEMINI_API_KEY_REQUIRED"
+        ) {
+          openModal();
+          return;
+        }
+        if (
           error.data?.code === "TOO_MANY_REQUESTS" &&
           error.message === "You have run out of credits"
         ) {
@@ -100,6 +110,10 @@ export function ProjectForm() {
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (!user) {
       goSignIn();
+      return;
+    }
+    if (needsGeminiKey) {
+      openModal();
       return;
     }
     await createProject.mutateAsync({
@@ -173,19 +187,32 @@ export function ProjectForm() {
               </kbd>
               <span className="ml-1.5 hidden sm:inline">to generate</span>
             </div>
-            <Button
-              type="submit"
-              disabled={isButtonDisabled}
-              size="sm"
-              className="h-8 gap-1.5 px-3"
-            >
-              {isPending ? (
-                <Loader2Icon className="size-3.5 animate-spin" />
-              ) : (
-                <ArrowUpIcon className="size-3.5" />
-              )}
-              Generate
-            </Button>
+            {needsGeminiKey ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-3"
+                onClick={openModal}
+              >
+                <KeyRoundIcon className="size-3.5" />
+                Add Gemini API key
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={isButtonDisabled}
+                size="sm"
+                className="h-8 gap-1.5 px-3"
+              >
+                {isPending ? (
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                ) : (
+                  <ArrowUpIcon className="size-3.5" />
+                )}
+                Generate
+              </Button>
+            )}
           </div>
         </form>
 

@@ -7,6 +7,7 @@ import {
   CrownIcon,
   HomeIcon,
   LogOutIcon,
+  SettingsIcon,
 } from "lucide-react";
 
 import {
@@ -105,6 +106,12 @@ export const UserControl = ({ showName }: Props) => {
           <Link href="/">
             <HomeIcon className="size-4" />
             Dashboard
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/settings">
+            <SettingsIcon className="size-4" />
+            Settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

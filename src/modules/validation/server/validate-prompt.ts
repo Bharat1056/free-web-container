@@ -4,6 +4,7 @@ import { z } from "zod/v3";
 import { StructuredOutputParser } from "@langchain/core/output_parsers";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { getModelChain } from "@/constants";
+import { createChatOpenAI } from "@/lib/llm";
 import { PROMPT_VALIDATION_PROMPT } from "@/prompt";
 
 const ValidationSchema = z.object({
@@ -22,17 +23,17 @@ const promptTemplate = PromptTemplate.fromTemplate(PROMPT_VALIDATION_PROMPT);
 /**
  * Validates a user prompt for website/app building.
  * Tries each model in the `promptValidation` chain until one succeeds.
+ * In prod BYOK, uses the Gemini key from AsyncLocalStorage.
  */
 export async function validatePrompt(
-  prompt: string
+  prompt: string,
 ): Promise<ValidationResult> {
   const formatInstructions = parser.getFormatInstructions();
 
   for (const modelId of getModelChain("promptValidation")) {
     try {
-      const model = new ChatOpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-        model: modelId,
+      const model: ChatOpenAI = createChatOpenAI({
+        modelId,
         temperature: 0.4,
       });
 
@@ -46,7 +47,7 @@ export async function validatePrompt(
     } catch (error) {
       console.error(
         `Prompt validation model "${modelId}" failed, trying next:`,
-        error
+        error,
       );
     }
   }

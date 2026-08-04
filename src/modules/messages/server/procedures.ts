@@ -7,6 +7,11 @@ import {
 } from "@/lib/project-queries";
 import { isRetryPayload } from "@/lib/retry";
 import { consumeUsage } from "@/lib/usage";
+import { runWithGeminiKey } from "@/lib/gemini-key-context";
+import {
+  assertGeminiKeyIfProd,
+  getUserGeminiApiKey,
+} from "@/lib/user-gemini-key";
 import { protectedProcedure, createTRPCRouter } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -56,83 +61,88 @@ export const messagesRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const existingProject = await findProjectByIdForUser({
-        projectId: input.projectId,
-        userId: ctx.auth.userId,
-      });
+      await assertGeminiKeyIfProd(ctx.auth.userId);
+      const geminiApiKey = await getUserGeminiApiKey(ctx.auth.userId);
 
-      if (!existingProject) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Project not found",
-        });
-      }
-
-      const shouldRetry = isRetryPayload(input.retry);
-
-      let promptForGeneration: string;
-
-      if (shouldRetry) {
-        const lastUserMessage = await findLastNonRetryUserMessage(
-          input.projectId,
-        );
-        if (!lastUserMessage?.content?.trim()) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "No previous user message to retry",
-          });
-        }
-        promptForGeneration = lastUserMessage.content;
-      } else {
-        if (!input.value?.trim()) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Prompt is required",
-          });
-        }
-        promptForGeneration = input.value;
-      }
-
-      try {
-        await consumeUsage();
-      } catch (error) {
-        if (error instanceof Error) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: error.message,
-          });
-        }
-        throw new TRPCError({
-          code: "TOO_MANY_REQUESTS",
-          message: "You have run out of credits",
-        });
-      }
-
-      let createdUserMessage = null;
-
-      if (!shouldRetry) {
-        createdUserMessage = await createChatMessage({
-          content: promptForGeneration,
-          role: "USER",
-          type: "RESULT",
+      return runWithGeminiKey(geminiApiKey ?? undefined, async () => {
+        const existingProject = await findProjectByIdForUser({
           projectId: input.projectId,
+          userId: ctx.auth.userId,
         });
-      }
 
-      const { ids } = await inngest.send({
-        name: "test/create.website",
-        data: {
-          value: promptForGeneration,
+        if (!existingProject) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Project not found",
+          });
+        }
+
+        const shouldRetry = isRetryPayload(input.retry);
+
+        let promptForGeneration: string;
+
+        if (shouldRetry) {
+          const lastUserMessage = await findLastNonRetryUserMessage(
+            input.projectId,
+          );
+          if (!lastUserMessage?.content?.trim()) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "No previous user message to retry",
+            });
+          }
+          promptForGeneration = lastUserMessage.content;
+        } else {
+          if (!input.value?.trim()) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Prompt is required",
+            });
+          }
+          promptForGeneration = input.value;
+        }
+
+        try {
+          await consumeUsage();
+        } catch (error) {
+          if (error instanceof Error) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: error.message,
+            });
+          }
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: "You have run out of credits",
+          });
+        }
+
+        let createdUserMessage = null;
+
+        if (!shouldRetry) {
+          createdUserMessage = await createChatMessage({
+            content: promptForGeneration,
+            role: "USER",
+            type: "RESULT",
+            projectId: input.projectId,
+          });
+        }
+
+        const { ids } = await inngest.send({
+          name: "test/create.website",
+          data: {
+            value: promptForGeneration,
+            projectId: input.projectId,
+            retry: shouldRetry,
+          },
+        });
+
+        await markProjectGenerating({
           projectId: input.projectId,
-          retry: shouldRetry,
-        },
-      });
+          inngestEventId: ids[0] ?? null,
+        });
 
-      await markProjectGenerating({
-        projectId: input.projectId,
-        inngestEventId: ids[0] ?? null,
+        return createdUserMessage;
       });
-
-      return createdUserMessage;
     }),
 });
