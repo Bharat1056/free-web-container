@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import TextareaAutoSize from "react-textarea-autosize";
 import { z } from "zod";
 import { useState } from "react";
-import { ArrowUpIcon, Loader2Icon } from "lucide-react";
+import { ArrowUpIcon, KeyRoundIcon, Loader2Icon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth-client";
@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 import { Usage } from "@/modules/projects/ui/components/usage";
 import { useRouter } from "next/navigation";
+import { useGeminiKeyGateOptional } from "@/modules/user-settings/ui/gemini-key-gate";
+import { isTRPCClientError } from "@trpc/client";
 
 interface Props {
   projectId: string;
@@ -37,6 +39,8 @@ export const MessageForm = ({
   const trpc = useTRPC();
   const { data: session, isPending: sessionPending } = useSession();
   const user = session?.user;
+  const { isConfigured, isRequired, openModal } = useGeminiKeyGateOptional();
+  const needsGeminiKey = Boolean(user) && isRequired && !isConfigured;
 
   const openSignIn = () => {
     router.push(`/sign-in?callbackUrl=/projects/${projectId}`);
@@ -60,9 +64,25 @@ export const MessageForm = ({
       return;
     }
 
+    if (needsGeminiKey) {
+      openModal();
+      return;
+    }
+
     const messageContent = values.value;
     form.reset();
-    await onSendMessage(messageContent);
+    try {
+      await onSendMessage(messageContent);
+    } catch (error) {
+      if (
+        isTRPCClientError(error) &&
+        error.data?.code === "PRECONDITION_FAILED" &&
+        error.message === "GEMINI_API_KEY_REQUIRED"
+      ) {
+        openModal();
+      }
+      throw error;
+    }
   };
 
   return (
@@ -107,19 +127,32 @@ export const MessageForm = ({
               <span>⌘</span>Enter
             </kbd>
           </div>
-          <Button
-            type="submit"
-            disabled={isButtonDisabled}
-            size="sm"
-            className="h-8 gap-1.5 px-3"
-          >
-            {isSendPending ? (
-              <Loader2Icon className="size-3.5 animate-spin" />
-            ) : (
-              <ArrowUpIcon className="size-3.5" />
-            )}
-            Send
-          </Button>
+          {needsGeminiKey ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 px-3"
+              onClick={openModal}
+            >
+              <KeyRoundIcon className="size-3.5" />
+              Add Gemini API key
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              disabled={isButtonDisabled}
+              size="sm"
+              className="h-8 gap-1.5 px-3"
+            >
+              {isSendPending ? (
+                <Loader2Icon className="size-3.5 animate-spin" />
+              ) : (
+                <ArrowUpIcon className="size-3.5" />
+              )}
+              Send
+            </Button>
+          )}
         </div>
       </form>
     </Form>

@@ -11,6 +11,9 @@ import { runCodeToolLoop } from "@/inngest/code-tool-loop";
 import { getRelevantMessages } from "@/lib/message-context";
 import { getModelChain } from "@/constants";
 import { isRetryPayload, toErrorDetails } from "@/lib/retry";
+import { isProdMode } from "@/lib/app-mode";
+import { runWithGeminiKey } from "@/lib/gemini-key-context";
+import { getProjectOwnerGeminiApiKey } from "@/lib/user-gemini-key";
 import {
   createAssistantRetryMessage,
   findLatestActiveFragmentFiles,
@@ -118,158 +121,184 @@ export const codeAgentFunction = inngest.createFunction(
     const isRetry = isRetryPayload(event.data.retry);
     const userPrompt = String(event.data.value ?? "");
 
-    try {
-      const sandboxSession = await step.run(
-        "get-or-create-sandbox",
-        async () => getOrCreateProjectSandbox({ projectId }),
-      );
+    const ownerGeminiKey = isProdMode()
+      ? await getProjectOwnerGeminiApiKey(projectId)
+      : null;
 
-      let agentState = createInitialAgentRunState({
-        sandboxId: sandboxSession.sandboxId,
-        isSandboxNewlyCreated: sandboxSession.isSandboxNewlyCreated,
-        isRetry,
-        userPrompt,
-      });
-
-      const existingFiles = await step.run(
-        "load-existing-files",
-        async () => findLatestActiveFragmentFiles(projectId),
-      );
-
-      const hasExistingFiles = Object.keys(existingFiles).length > 0;
-      const modes = deriveRunModes({ hasExistingFiles, isRetry });
-      agentState = { ...agentState, ...modes };
-
-      if (agentState.freshMode) {
-        agentState = {
-          ...agentState,
-          previousMessages: [],
-          files: {},
-        };
-      } else {
-        const previousMessages = await step.run(
-          "get-previous-messages",
-          async () => getRelevantMessages(projectId, agentState.userPrompt),
-        );
-
-        agentState = {
-          ...agentState,
-          previousMessages: previousMessages as AgentRunState["previousMessages"],
-          files: existingFiles,
-        };
-      }
-
-      if (
-        agentState.isSandboxNewlyCreated &&
-        Object.keys(agentState.files).length > 0
-      ) {
-        await step.run("hydrate-sandbox", async () =>
-          hydrateSandboxWithFragmentFiles({
-            sandboxId: agentState.sandboxId,
-            files: agentState.files,
-          }),
-        );
-      }
-
-      const codeModelIds = getModelChain("code");
-      let codeResult;
-      try {
-        codeResult = await runCodeToolLoop({
-          step,
-          sandboxId: agentState.sandboxId,
-          files: agentState.files,
-          historyMessages: agentState.previousMessages,
-          userPrompt: agentState.userPrompt,
-          enhancedPrompt: undefined,
-          modelIds: codeModelIds,
-        });
-      } catch (error) {
-        throwIfRateLimited(error);
-        throw error;
-      }
-
-      agentState = {
-        ...agentState,
-        summary: codeResult.summary,
-        files: codeResult.files,
-      };
-
-      const isEmptyCodeResult =
-        !codeResult.summary ||
-        Object.keys(codeResult.files || {}).length === 0;
-
-      const sandboxUrl = await step.run("persist-sandbox-url", async () =>
-        persistProjectSandboxUrl({
-          projectId,
-          sandboxId: agentState.sandboxId,
-        }),
-      );
-      agentState = { ...agentState, sandboxUrl };
-
-      await step.run("save-result", async () => {
-        if (isEmptyCodeResult) {
-          await markProjectGenerationStatus(projectId, "FAILED");
-          return createAssistantRetryMessage({
-            projectId,
-            errorDetails: toErrorDetails("Empty code result", {
-              code: "EMPTY_CODE_RESULT",
-              step: "save-result",
-            }),
-          });
-        }
-
-        return saveSuccessfulGenerationResult({
-          projectId,
-          summary: codeResult.summary,
-          files: codeResult.files,
-          sandboxUrl,
-          fragmentTitle: sanitizeFragmentTitle(codeResult.summary),
-        });
-      });
-
-      return {
-        url: sandboxUrl,
-        title: sanitizeFragmentTitle(codeResult.summary),
-        files: codeResult.files,
-        summary: codeResult.summary,
-      };
-    } catch (error) {
-      if (error instanceof NonRetriableError) {
-        throw error;
-      }
-      if (error instanceof RetryAfterError || isRateLimitError(error)) {
-        throwIfRateLimited(error);
-        throw error;
-      }
-
-      console.error("Complete function failure:", error);
-
-      await step.run("save-error-message", async () => {
-        const storedSandboxId = await findProjectSandboxId(projectId);
-
-        if (storedSandboxId) {
-          try {
-            await persistProjectSandboxUrl({
-              projectId,
-              sandboxId: storedSandboxId,
-            });
-          } catch (urlError) {
-            console.warn(
-              "Could not persist sandbox URL after failure:",
-              urlError,
-            );
-          }
-        }
-
+    if (isProdMode() && !ownerGeminiKey) {
+      await step.run("mark-missing-gemini-key", async () => {
         await markProjectGenerationStatus(projectId, "FAILED");
         return createAssistantRetryMessage({
           projectId,
-          errorDetails: toErrorDetails(error, { step: "save-error-message" }),
+          errorDetails: toErrorDetails("Gemini API key required", {
+            code: "GEMINI_API_KEY_REQUIRED",
+            step: "load-owner-gemini-key",
+          }),
         });
       });
-
-      throw error;
+      throw new NonRetriableError("GEMINI_API_KEY_REQUIRED");
     }
+
+    return runWithGeminiKey(ownerGeminiKey ?? undefined, async () => {
+      try {
+        const sandboxSession = await step.run(
+          "get-or-create-sandbox",
+          async () => getOrCreateProjectSandbox({ projectId }),
+        );
+
+        let agentState = createInitialAgentRunState({
+          sandboxId: sandboxSession.sandboxId,
+          isSandboxNewlyCreated: sandboxSession.isSandboxNewlyCreated,
+          isRetry,
+          userPrompt,
+        });
+
+        const existingFiles = await step.run("load-existing-files", async () =>
+          findLatestActiveFragmentFiles(projectId),
+        );
+
+        const hasExistingFiles = Object.keys(existingFiles).length > 0;
+        const modes = deriveRunModes({ hasExistingFiles, isRetry });
+        agentState = { ...agentState, ...modes };
+
+        if (agentState.freshMode) {
+          agentState = {
+            ...agentState,
+            previousMessages: [],
+            files: {},
+          };
+        } else {
+          const previousMessages = await step.run(
+            "get-previous-messages",
+            async () =>
+              runWithGeminiKey(ownerGeminiKey ?? undefined, () =>
+                getRelevantMessages(projectId, agentState.userPrompt),
+              ),
+          );
+
+          agentState = {
+            ...agentState,
+            previousMessages:
+              previousMessages as AgentRunState["previousMessages"],
+            files: existingFiles,
+          };
+        }
+
+        if (
+          agentState.isSandboxNewlyCreated &&
+          Object.keys(agentState.files).length > 0
+        ) {
+          await step.run("hydrate-sandbox", async () =>
+            hydrateSandboxWithFragmentFiles({
+              sandboxId: agentState.sandboxId,
+              files: agentState.files,
+            }),
+          );
+        }
+
+        const codeModelIds = getModelChain("code");
+        let codeResult;
+        try {
+          codeResult = await runCodeToolLoop({
+            step,
+            sandboxId: agentState.sandboxId,
+            files: agentState.files,
+            historyMessages: agentState.previousMessages,
+            userPrompt: agentState.userPrompt,
+            enhancedPrompt: undefined,
+            modelIds: codeModelIds,
+            geminiApiKey: ownerGeminiKey ?? undefined,
+          });
+        } catch (error) {
+          throwIfRateLimited(error);
+          throw error;
+        }
+
+        agentState = {
+          ...agentState,
+          summary: codeResult.summary,
+          files: codeResult.files,
+        };
+
+        const isEmptyCodeResult =
+          !codeResult.summary ||
+          Object.keys(codeResult.files || {}).length === 0;
+
+        const sandboxUrl = await step.run("persist-sandbox-url", async () =>
+          persistProjectSandboxUrl({
+            projectId,
+            sandboxId: agentState.sandboxId,
+          }),
+        );
+        agentState = { ...agentState, sandboxUrl };
+
+        await step.run("save-result", async () =>
+          runWithGeminiKey(ownerGeminiKey ?? undefined, async () => {
+            if (isEmptyCodeResult) {
+              await markProjectGenerationStatus(projectId, "FAILED");
+              return createAssistantRetryMessage({
+                projectId,
+                errorDetails: toErrorDetails("Empty code result", {
+                  code: "EMPTY_CODE_RESULT",
+                  step: "save-result",
+                }),
+              });
+            }
+
+            return saveSuccessfulGenerationResult({
+              projectId,
+              summary: codeResult.summary,
+              files: codeResult.files,
+              sandboxUrl,
+              fragmentTitle: sanitizeFragmentTitle(codeResult.summary),
+            });
+          }),
+        );
+
+        return {
+          url: sandboxUrl,
+          title: sanitizeFragmentTitle(codeResult.summary),
+          files: codeResult.files,
+          summary: codeResult.summary,
+        };
+      } catch (error) {
+        if (error instanceof NonRetriableError) {
+          throw error;
+        }
+        if (error instanceof RetryAfterError || isRateLimitError(error)) {
+          throwIfRateLimited(error);
+          throw error;
+        }
+
+        console.error("Complete function failure:", error);
+
+        await step.run("save-error-message", async () => {
+          const storedSandboxId = await findProjectSandboxId(projectId);
+
+          if (storedSandboxId) {
+            try {
+              await persistProjectSandboxUrl({
+                projectId,
+                sandboxId: storedSandboxId,
+              });
+            } catch (urlError) {
+              console.warn(
+                "Could not persist sandbox URL after failure:",
+                urlError,
+              );
+            }
+          }
+
+          await markProjectGenerationStatus(projectId, "FAILED");
+          return createAssistantRetryMessage({
+            projectId,
+            errorDetails: toErrorDetails(error, { step: "save-error-message" }),
+          });
+        });
+
+        throw error;
+      }
+    });
   },
 );
 

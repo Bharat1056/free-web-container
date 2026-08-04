@@ -1,8 +1,13 @@
 import { getModelChain } from "@/constants";
+import { isProdMode } from "@/lib/app-mode";
+import { getGeminiApiKeyFromContext } from "@/lib/gemini-key-context";
 import { normalizeText } from "@/lib/rag-utils";
 
 /**
  * Creates a vector embedding for text via Gemini.
+ *
+ * - prod: user key from AsyncLocalStorage ({@link runWithGeminiKey})
+ * - non-prod: server `GEMINI_API_KEY`
  *
  * Tries each model in the `embedding` fallback chain. Failures (missing key,
  * network errors, empty responses) return `[]` so message creation and
@@ -17,9 +22,16 @@ export async function embedText(text: string): Promise<number[]> {
     return [];
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = isProdMode()
+    ? getGeminiApiKeyFromContext()
+    : process.env.GEMINI_API_KEY;
+
   if (!apiKey) {
-    console.error("GEMINI_API_KEY is not set; skipping embedding");
+    console.error(
+      isProdMode()
+        ? "User Gemini API key is not available; skipping embedding"
+        : "GEMINI_API_KEY is not available; skipping embedding",
+    );
     return [];
   }
 
@@ -38,13 +50,13 @@ export async function embedText(text: string): Promise<number[]> {
               parts: [{ text: content }],
             },
           }),
-        }
+        },
       );
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => "");
         console.error(
-          `Gemini embedding model "${modelId}" failed (${response.status}): ${errorBody}`
+          `Gemini embedding model "${modelId}" failed (${response.status}): ${errorBody}`,
         );
         continue;
       }
@@ -55,7 +67,7 @@ export async function embedText(text: string): Promise<number[]> {
       const values = data.embedding?.values;
       if (!Array.isArray(values) || values.length === 0) {
         console.error(
-          `Gemini embedding model "${modelId}" returned an empty vector`
+          `Gemini embedding model "${modelId}" returned an empty vector`,
         );
         continue;
       }
@@ -63,7 +75,7 @@ export async function embedText(text: string): Promise<number[]> {
     } catch (error) {
       console.error(
         `Gemini embedding model "${modelId}" request failed:`,
-        error
+        error,
       );
     }
   }

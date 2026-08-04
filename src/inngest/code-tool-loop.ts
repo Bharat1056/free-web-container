@@ -4,10 +4,7 @@ import type {
 } from "openai/resources/chat/completions";
 import { NonRetriableError } from "inngest";
 import { PROMPT } from "@/prompt";
-import {
-  getRateLimitDelayMs,
-  throwIfRateLimited,
-} from "@/inngest/rate-limit";
+import { getRateLimitDelayMs, throwIfRateLimited } from "@/inngest/rate-limit";
 import {
   OPENAI_CODE_TOOLS,
   executeSandboxTool,
@@ -19,12 +16,10 @@ import {
   buildGroundedContinuationMessage,
   extractSalvageablePartials,
 } from "@/inngest/partial-salvage";
-import {
-  MAX_CODE_CONTINUATION_ATTEMPTS,
-  MAX_CODE_ITERS,
-} from "@/constants";
+import { MAX_CODE_CONTINUATION_ATTEMPTS, MAX_CODE_ITERS } from "@/constants";
 import { loadShadcnContext } from "@/lib/shadcn-context";
 import { createOpenAiClient } from "@/lib/llm";
+import { runWithGeminiKey } from "@/lib/gemini-key-context";
 
 /** Inngest step subset — kept loose because step.run Jsonifies return values. */
 type StepTools = {
@@ -79,7 +74,7 @@ export type CodeToolLoopResult = {
  * @returns OpenAI-compatible user/assistant messages (empty content skipped)
  */
 function agentKitMessagesToOpenAI(
-  messages: AgentKitTextMessage[]
+  messages: AgentKitTextMessage[],
 ): ChatCompletionMessageParam[] {
   const out: ChatCompletionMessageParam[] = [];
   for (const msg of messages) {
@@ -96,7 +91,7 @@ function agentKitMessagesToOpenAI(
           "text" in part &&
           typeof (part as { text: unknown }).text === "string"
             ? (part as { text: string }).text
-            : ""
+            : "",
         )
         .join("");
     }
@@ -230,7 +225,7 @@ async function streamCompletion(input: {
       }
       console.error(
         `OpenAI code model "${modelId}" failed; trying fallback:`,
-        error
+        error,
       );
     }
   }
@@ -276,7 +271,7 @@ function extractTaskSummary(content: string | null | undefined): string | null {
  */
 function fallbackSummary(
   content: string | null | undefined,
-  files: SandboxFileMap
+  files: SandboxFileMap,
 ): string {
   if (content) {
     const cleaned = content
@@ -286,13 +281,9 @@ function fallbackSummary(
       .trim();
     const looksLikeCode =
       /\b(export\s+(default\s+)?function|const\s+\w+\s*=\s*\(|import\s+.+from)\b/.test(
-        cleaned
+        cleaned,
       );
-    if (
-      cleaned.length >= 20 &&
-      cleaned.length <= 800 &&
-      !looksLikeCode
-    ) {
+    if (cleaned.length >= 20 && cleaned.length <= 800 && !looksLikeCode) {
       return cleaned
         .split(/\n+/)
         .map((line) => line.trim())
@@ -335,7 +326,10 @@ function buildEditContextMessage(files: SandboxFileMap): string {
   for (const [path, content] of entries) {
     const text = typeof content === "string" ? content : String(content ?? "");
     const block = `\n----- FILE: ${path} -----\n${text}\n`;
-    if (text.length > EDIT_CONTEXT_PER_FILE_LIMIT || used + block.length > EDIT_CONTEXT_CHAR_BUDGET) {
+    if (
+      text.length > EDIT_CONTEXT_PER_FILE_LIMIT ||
+      used + block.length > EDIT_CONTEXT_CHAR_BUDGET
+    ) {
       omitted.push(path);
       continue;
     }
@@ -383,6 +377,7 @@ export async function runCodeToolLoop(input: {
   userPrompt: string;
   enhancedPrompt?: string;
   modelIds: string[];
+  geminiApiKey?: string;
   maxIters?: number;
   maxContinuationAttempts?: number;
 }): Promise<CodeToolLoopResult> {
@@ -398,7 +393,7 @@ export async function runCodeToolLoop(input: {
   };
   let nudgedForSummary = false;
   const shadcnContext = await input.step.run("load-shadcn-context", async () =>
-    loadShadcnContext(input.sandboxId, input.userPrompt)
+    loadShadcnContext(input.sandboxId, input.userPrompt),
   );
 
   const messages: ChatCompletionMessageParam[] = [
@@ -428,7 +423,13 @@ export async function runCodeToolLoop(input: {
     for (let attempt = 0; attempt < maxContinuationAttempts; attempt++) {
       const inference = await input.step.run(
         `code-infer-${iter}-attempt-${attempt}`,
-        async () => streamCompletion({ modelIds: input.modelIds, messages })
+        async () =>
+          runWithGeminiKey(input.geminiApiKey, () =>
+            streamCompletion({
+              modelIds: input.modelIds,
+              messages,
+            }),
+          ),
       );
 
       if (inference.status === "rate_limited") {
@@ -438,7 +439,7 @@ export async function runCodeToolLoop(input: {
           files = await input.step.run(
             `code-checkpoint-${iter}-${attempt}`,
             async () =>
-              writePartialsToSandbox(input.sandboxId, files, salvage.files)
+              writePartialsToSandbox(input.sandboxId, files, salvage.files),
           );
           for (const path of salvage.paths) {
             knownCompletePaths.delete(path);
@@ -456,7 +457,7 @@ export async function runCodeToolLoop(input: {
 
         await input.step.sleep(
           `code-infer-wait-${iter}-${attempt}`,
-          formatRetryAfter(inference.retryAfter)
+          formatRetryAfter(inference.retryAfter),
         );
         continue;
       }
@@ -470,7 +471,7 @@ export async function runCodeToolLoop(input: {
       // memoized as rate_limited, so an outer Inngest retry would instantly
       // re-exhaust and storm 500s. Fail the run so the UI can show Retry.
       throw new NonRetriableError(
-        `Model rate limit hit after ${maxContinuationAttempts} continuation attempts. Tap Retry in a minute.`
+        `Model rate limit hit after ${maxContinuationAttempts} continuation attempts. Tap Retry in a minute.`,
       );
     }
 
@@ -505,7 +506,7 @@ export async function runCodeToolLoop(input: {
       // Prefer salvaging a fragment over failing the whole run.
       if (Object.keys(files).length > 0) {
         console.warn(
-          "Code tool loop: missing <task_summary> after nudge; salvaging fallback summary"
+          "Code tool loop: missing <task_summary> after nudge; salvaging fallback summary",
         );
         return {
           summary: fallbackSummary(assistantMsg.content, files),
@@ -531,13 +532,13 @@ export async function runCodeToolLoop(input: {
               toolArgs,
               input.sandboxId,
               files,
-              shadcnGrounding
+              shadcnGrounding,
             );
           } catch (error) {
             throwIfRateLimited(error);
             throw error;
           }
-        }
+        },
       );
 
       files = toolResult.fileMap;
@@ -574,10 +575,10 @@ export async function runCodeToolLoop(input: {
       .reverse()
       .find(
         (m): m is ChatCompletionAssistantMessageParam =>
-          m.role === "assistant" && typeof m.content === "string"
+          m.role === "assistant" && typeof m.content === "string",
       );
     console.warn(
-      "Code tool loop ended without <task_summary>; salvaging with fallback summary"
+      "Code tool loop ended without <task_summary>; salvaging with fallback summary",
     );
     const summaryContent =
       typeof lastAssistant?.content === "string" ? lastAssistant.content : null;
@@ -588,6 +589,6 @@ export async function runCodeToolLoop(input: {
   }
 
   throw new NonRetriableError(
-    "Code tool loop ended without a task summary or any written files"
+    "Code tool loop ended without a task summary or any written files",
   );
 }
